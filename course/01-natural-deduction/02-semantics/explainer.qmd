@@ -1,0 +1,148 @@
+---
+title: "1.2 — Semantics: what a formula means"
+---
+
+> **Where you are.** Slice 1.1 gave us `Form` — formulas as *data*, but with no meaning attached:
+> `var 0 ⇒ var 1` is just a tree. This slice supplies the **meaning**, turning `04-logic`'s truth tables
+> into a function `eval`, defining validity `⊨`, and giving us a tautology checker we can *run*. Meaning
+> (`⊨`) and proof (`⊢`, next slice) are the two notions whose coincidence — soundness and completeness —
+> is the whole point of Course 1. Code here graduates into `Principia.Logic.Semantics`.
+
+## 1. The question
+
+A formula by itself says nothing; its meaning is **how its truth depends on its atoms**. Fix a
+*valuation* `v` — an assignment of `true`/`false` to each atom — and every formula gets a definite truth
+value. That assignment-to-value function is the **truth table** of `04-logic`, and now we write it as
+honest Lean code that the machine can compute and we can reason about.
+
+## 2. `eval`: the truth table as a function
+
+A valuation is just a function `v : Nat → Bool` (atom index ↦ truth value). Then `eval` walks the
+formula tree, combining sub-values with the matching Boolean operation — structural recursion, exactly
+as in `03-recursion`:
+
+```lean
+def eval (v : Nat → Bool) : Form → Bool
+  | .var n   => v n                       -- look the atom up
+  | .fls     => false                     -- ⊥ is always false
+  | .imp a b => (!eval v a) || eval v b   -- p → q  ≡  ¬p ∨ q
+  | .and a b => eval v a && eval v b
+  | .or a b  => eval v a || eval v b
+```
+
+Each line is one row-rule of the truth table from `04-logic §4`. Note `imp a b` becomes
+`(!eval v a) || eval v b` — the classical reading "`p → q` is `¬p ∨ q`". Because `∼φ` is *defined* as
+`φ ⇒ ⊥`, its value comes out automatically: `eval v (∼φ) = (!eval v φ) || false = !eval v φ` — which is
+your first exercise, `eval_neg`. We never gave `∼` its own evaluation rule; it inherited one.
+
+## 3. Validity and entailment: the `⊨` side
+
+With `eval` in hand, the semantic notions of `04-logic` become definitions:
+
+```lean
+def Tautology (φ : Form) : Prop := ∀ v, eval v φ = true       -- "⊨ φ": true under EVERY valuation
+
+def Entails (Γ : List Form) (φ : Form) : Prop :=               -- "Γ ⊨ φ"
+  ∀ v, (∀ ψ ∈ Γ, eval v ψ = true) → eval v φ = true
+```
+
+`Tautology φ` is a *universally quantified* statement over all `2^∞` valuations — a `Prop`, proved by
+taking an arbitrary `v` and computing. `Entails Γ φ` says every valuation that makes all of `Γ` true also
+makes `φ` true; we write it `Γ ⊨ φ`. **Keep the two turnstiles straight:** `⊨` (this slice) is about
+*truth*; `⊢` (next slice) is about *proof*. They look similar on purpose — the punchline of the course is
+that they coincide.
+
+## 4. A checker you can run
+
+Since a formula has finitely many atoms, "true under *every* valuation" is secretly a *finite* check —
+the `2ⁿ`-row truth table. We make that runnable. `maxVar φ` bounds the atoms used; `allEnvs n` lists every
+valuation that can differ on atoms `< n`; and `taut?` tries them all:
+
+```lean
+def taut? (φ : Form) : Bool := (allEnvs (maxVar φ)).all (fun v => eval v φ)
+```
+
+```lean
+#eval taut? (Form.var 0 ⇒ Form.var 0)         -- true
+#eval taut? (Form.var 0)                       -- false  (a bare atom can be made false)
+#eval taut? (Form.var 0 ⋎ ∼Form.var 0)         -- true   (excluded middle, as a truth table)
+```
+
+That last line is worth pausing on. In `04-logic`, proving `p ∨ ¬p` for an arbitrary *proposition* needed
+a **classical axiom** (`Classical.em`, costing `Classical.choice`). Here `φ ⋎ ∼φ` is valid *by pure
+computation* — `taut_em`, axiom-free. No contradiction: those are two different worlds (`Prop`-level
+provability vs. Boolean truth tables), and excluded middle is "free" in the Boolean world precisely
+because every `Bool` *is* decided. This is the constructive/classical story from a new angle.
+
+(We're treating `taut?` as a *runnable oracle* — handy for experiments and, later, differential testing.
+Formally proving `taut? φ = true ↔ Tautology φ` needs a lemma that `eval` ignores atoms `≥ maxVar φ`; we
+defer that. The rigorous link between syntax and truth will instead come through soundness/completeness.)
+
+## 5. Prove it
+
+`eval`, `Tautology`, `Entails`, and the checker are given. Prove the three facts:
+
+```bash
+make lab C=01-natural-deduction/02-semantics
+```
+
+1. `eval_neg (v) (φ) : eval v (∼φ) = !eval v φ`
+2. `taut_imp_self (φ) : Tautology (φ ⇒ φ)`
+3. `taut_em (φ) : Tautology (φ ⋎ ∼φ)`
+
+Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `eval_neg`.** *Nudge:* `∼φ` is `φ ⇒ ⊥` by definition — unfold `neg` and `eval`, then it's a Boolean
+identity (`b || false = b`). *More:* `simp [Form.neg, eval]`.
+
+**2 `taut_imp_self`.** *Nudge:* `Tautology` starts with `∀ v` — `intro v`, then unfold `eval`. You'll
+face `(!eval v φ || eval v φ) = true`, which depends only on the one `Bool` value `eval v φ`. *More:*
+`intro v; simp only [eval]; cases eval v φ <;> rfl` (the `cases` checks both truth values).
+
+**3 `taut_em`.** *Nudge:* same shape as #2, but unfold `Form.neg` too (since `∼φ` appears). *More:*
+`intro v; simp only [eval, Form.neg]; cases eval v φ <;> rfl`.
+
+## 7. Exercises (optional, for fluency)
+
+1. `eval_top (v) : eval v Form.top = true`. *Hint:* `⊤` is `∼⊥`; unfold and compute.
+2. `taut_and_elim_left (φ ψ) : Tautology ((φ ⋏ ψ) ⇒ φ)`. *Hint:* like `taut_imp_self`, but now two
+   atoms' worth of truth values — split on both.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — `eval_top`
+
+```lean
+theorem eval_top (v : Nat → Bool) : eval v Form.top = true := by
+  simp [Form.top, Form.neg, eval]
+```
+
+`top` is `∼⊥ = (⊥ ⇒ ⊥)`. Unfolding: `eval v (imp fls fls) = (!eval v fls) || eval v fls =
+(!false) || false = true || false = true`. `simp` unfolds the three definitions and finishes the Boolean
+arithmetic. `⊤` is valid — reassuringly.
+
+### Exercise 2 — `taut_and_elim_left`
+
+```lean
+theorem taut_and_elim_left (φ ψ : Form) : Tautology ((φ ⋏ ψ) ⇒ φ) := by
+  intro v
+  simp only [eval]
+  cases eval v φ <;> cases eval v ψ <;> rfl
+```
+
+After `intro v; simp only [eval]`, the goal is a Boolean expression in `eval v φ` and `eval v ψ`:
+`(!(eval v φ && eval v ψ) || eval v φ) = true`. It depends on *two* truth values, so we split on both —
+`cases eval v φ <;> cases eval v ψ` makes the four truth-table rows, and `rfl` checks each. This is the
+semantic content of `∧`-elimination ("from `p ∧ q`, conclude `p`"): a tautology, verified by exhausting
+the table. Next slice gives the *proof rule* that mirrors it.
+
+## 9. Going further
+
+- **Logic and Proof** — `../../references/logic_and_proof`: the semantics chapters (valuations, truth
+  tables, validity) this slice formalizes.
+- **Stretch:** prove `taut? φ = true ↔ Tautology φ`. The crux is a lemma that `eval v φ` depends only on
+  `v`'s values below `maxVar φ`; with it, the finite scan decides the infinite `∀ v`.
+- **Next: slice 1.3 — natural deduction.** We define `Γ ⊢ φ` as an inductive type whose constructors are
+  the inference rules of `04-logic §2`, and build actual proof trees (including Peirce's law).

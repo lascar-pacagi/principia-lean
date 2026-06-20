@@ -1,0 +1,134 @@
+---
+title: "3.2 — DPLL: a SAT solver, proved to return real models"
+---
+
+> **Where you are.** Slice 3.1 gave `assign` (commit to a literal, simplify) and its satisfiability
+> invariant. Now we assemble the **DPLL** search — the backbone of every practical SAT solver — and prove
+> **model soundness**: whatever assignment it returns genuinely satisfies the clause set. Code graduates
+> into `Principia.Sat.Dpll`.
+
+## 1. The question
+
+Decide whether a clause set has a model — and if so, produce one. DPLL's idea (Davis–Putnam–Logemann–
+Loveland, 1962): guess a literal, simplify, recurse; on failure, flip the guess. Each guess removes a
+variable, so the search terminates. We bound it with `fuel` to keep the function total.
+
+## 2. The solver
+
+```lean
+def dpll : Nat → Cnf → Option (List Lit)
+  | 0, _ => none
+  | _, [] => some []                                   -- no clauses left ⇒ satisfiable (empty model)
+  | fuel + 1, cnf =>
+    if ([] : Clause) ∈ cnf then none                   -- □ present ⇒ this branch is unsatisfiable
+    else
+      match cnf with
+      | (l :: _) :: _ =>                               -- guess the first literal `l`
+        match dpll fuel (assign cnf l) with
+        | some ls => some (l :: ls)                    -- l = true worked; record it
+        | none    => (dpll fuel (assign cnf l.neg)).map (l.neg :: ·)   -- else try l = false
+      | _ => none
+```
+
+It returns the **list of committed literals** — a partial assignment. Run it:
+
+```lean
+#eval dpll 10 [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩]]                    -- some [-0, +1]   (p=false, q=true)
+#eval dpll 10 [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]]        -- none            (unsatisfiable)
+```
+
+## 3. Model soundness
+
+What should "the answer is correct" mean? A clause set is satisfied by a literal list when every clause
+contains one of those literals:
+
+```lean
+def Clause.satBy ls c := c.any (· ∈ ls)        -- some chosen literal is in the clause
+def Cnf.satBy    ls cnf := cnf.all (Clause.satBy ls)
+```
+
+(Using `satBy` rather than a `Nat → Bool` valuation keeps the proof clean: `satBy` is *monotone* in the
+literal list, so we never need to argue the assignment is consistent or that evaluation ignores unused
+variables.) The keystone:
+
+```lean
+theorem dpll_sound fuel cnf ls : dpll fuel cnf = some ls → Cnf.satBy ls cnf = true
+```
+
+Its engine is the `satBy` version of slice 3.1's `sat_of_assign`:
+
+```lean
+theorem satBy_of_assign ls cnf l : Cnf.satBy ls (assign cnf l) → Cnf.satBy (l :: ls) cnf
+```
+
+*A list satisfying the simplified problem, extended by the guess `l`, satisfies the original.* The proof
+is the exact mirror of `sat_of_assign`: a clause containing `l` is satisfied by `l ∈ l :: ls`; a kept
+clause's erased form is satisfied, and the witnessing literal survives both the `erase` and the `cons`.
+
+Then `dpll_sound` is **induction on `fuel`, following the solver's branches**: when `dpll` returns
+`l :: ls'` it's because `dpll fuel (assign cnf l) = some ls'`, so the induction hypothesis gives
+`satBy ls' (assign cnf l)` and `satBy_of_assign` lifts it to `satBy (l :: ls') cnf`; the `l.neg` branch is
+symmetric. The empty-clause and out-of-fuel cases return `none`, so they impose no obligation.
+
+## 4. Prove it
+
+`dpll` and `satBy` are given. Prove (`make lab C=03-sat/02-dpll`):
+
+1. `satBy_of_assign ls cnf l : Cnf.satBy ls (assign cnf l) = true → Cnf.satBy (l :: ls) cnf = true`
+2. `dpll_sound fuel cnf ls : dpll fuel cnf = some ls → Cnf.satBy ls cnf = true`
+
+§3 is the walkthrough. Try cold; §5 has hints.
+
+## 5. Hints for the skeleton
+
+**1 `satBy_of_assign`.** *Nudge:* it's `sat_of_assign` (slice 3.1) with `Clause.satBy`/`Cnf.satBy` in
+place of `Clause.eval`/`Cnf.eval`. Same structure: `rw [Cnf.satBy, List.all_eq_true] at h ⊢; intro c hc;
+cases hlc : decide (l ∈ c)`. The `true` case uses `l ∈ l :: ls` (`by simp`); the `false` case finds the
+kept clause's witness via `List.mem_of_mem_erase` and lifts it with `List.mem_cons_of_mem`.
+
+**2 `dpll_sound`.** *Nudge:* `induction fuel`; for `succ k ih`, `cases cnf` then (in the `cons c cs` case)
+`cases c` to expose the head literal `l`. After `simp only [dpll] at h`, `split at h` on the `if`, then
+`split at h` on the inner `dpll fuel (assign cnf l)` match. The two productive branches give
+`dpll k (assign cnf l) = some ls'` (use `ih` + `satBy_of_assign`) and the `.map` of the `l.neg` branch
+(open it with `Option.map_eq_some_iff`, then `ih` + `satBy_of_assign`). The `none`/`□` branches close with
+`simp at h`.
+
+## 6. Exercises (optional, for fluency)
+
+1. **Run it.** `#eval` `dpll` on `[[⟨0,true⟩,⟨1,true⟩,⟨2,true⟩], [⟨0,false⟩], [⟨1,false⟩]]`. Predict SAT
+   or UNSAT first; check the returned model with `Cnf.satBy`.
+2. **Conceptual.** Model soundness (the *yes*/SAT side) was provable here, but proving "`dpll` returns
+   `none` ⟹ the set is unsatisfiable" (the *no*/UNSAT side) is harder. Why the asymmetry — and which
+   earlier course met the same one?
+
+## 7. Corrections to the optional exercises
+
+### Exercise 1 — running DPLL
+
+```lean
+#eval dpll 10 [[⟨0,true⟩,⟨1,true⟩,⟨2,true⟩], [⟨0,false⟩], [⟨1,false⟩]]   -- some [-0, -1, +2]
+```
+
+It's satisfiable: `p=false, q=false` falsify the unit clauses' negations, and the first clause needs
+`r=true`. DPLL guesses `+0` (fails against `[-0]`), backtracks to `-0`, then `-1`, then satisfies the long
+clause with `+2`. `Cnf.satBy [-0,-1,+2] …` evaluates to `true` — `dpll_sound` guarantees it.
+
+### Exercise 2 — the SAT/UNSAT asymmetry
+
+A *yes* comes with a witness — the returned literal list — and `dpll_sound` just checks that witness
+satisfies every clause; soundness is local. A *no* is a claim about the *whole* search tree ("no branch
+finds a model"), which to certify as genuine unsatisfiability needs a global argument (every exhausted
+branch really is dead) — the completeness side. It's the same asymmetry as Course 1 (`prove`'s trustworthy
+*yes* vs. its meaningless *no*) and Course 2 (resolution soundness easy, refutation-completeness hard).
+The clean way to make a SAT solver's *no* trustworthy is *not* to verify the solver, but to have it emit a
+**resolution/LRAT refutation** and check *that* — the next slice.
+
+## 8. Going further
+
+- **Unit propagation & pure literals.** DPLL gets fast by choosing the guessed literal wisely: a literal
+  forced by a unit clause, or one appearing with a single polarity. Each is just `assign` with that
+  literal — model soundness still holds, unchanged.
+- **Next: the verified LRAT certificate checker.** For *UNSAT*, instead of trusting the solver we check a
+  certificate: `check proof cnf → cnf.Unsat`. An untrusted high-performance solver emits the proof; our
+  small verified checker validates it. That's the achievable keystone, and the real-world trustworthy-
+  UNSAT pipeline (Lean's own `bv_decide` works exactly this way).

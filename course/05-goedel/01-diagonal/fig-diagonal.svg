@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 300" width="340" height="300" font-family="serif">
+  <!-- column headers -->
+  <text x="108" y="40" font-size="13" font-style="italic">a₁</text>
+  <text x="152" y="40" font-size="13" font-style="italic">a₂</text>
+  <text x="196" y="40" font-size="13" font-style="italic">a₃</text>
+  <text x="240" y="40" font-size="13" font-style="italic">a₄</text>
+  <!-- diagonal-cell highlights -->
+  <rect x="92" y="48" width="34" height="34" fill="#ffd33d" fill-opacity="0.45"/>
+  <rect x="136" y="92" width="34" height="34" fill="#ffd33d" fill-opacity="0.45"/>
+  <rect x="180" y="136" width="34" height="34" fill="#ffd33d" fill-opacity="0.45"/>
+  <rect x="224" y="180" width="34" height="34" fill="#ffd33d" fill-opacity="0.45"/>
+  <!-- grid lines -->
+  <g stroke="#d0d7de" stroke-width="1">
+    <line x1="92" y1="48" x2="258" y2="48"/><line x1="92" y1="92" x2="258" y2="92"/>
+    <line x1="92" y1="136" x2="258" y2="136"/><line x1="92" y1="180" x2="258" y2="180"/>
+    <line x1="92" y1="214" x2="258" y2="214"/>
+    <line x1="92" y1="48" x2="92" y2="214"/><line x1="136" y1="48" x2="136" y2="214"/>
+    <line x1="180" y1="48" x2="180" y2="214"/><line x1="224" y1="48" x2="224" y2="214"/>
+    <line x1="258" y1="48" x2="258" y2="214"/>
+  </g>
+  <!-- row labels  (e aᵢ = the i-th set as a 0/1 row) -->
+  <text x="40" y="72"  font-size="13" font-style="italic">e a₁</text>
+  <text x="40" y="116" font-size="13" font-style="italic">e a₂</text>
+  <text x="40" y="160" font-size="13" font-style="italic">e a₃</text>
+  <text x="40" y="204" font-size="13" font-style="italic">e a₄</text>
+  <!-- cell values -->
+  <g font-size="15" text-anchor="middle">
+    <text x="109" y="72">1</text><text x="153" y="72">0</text><text x="197" y="72">1</text><text x="241" y="72">1</text>
+    <text x="109" y="116">0</text><text x="153" y="116">0</text><text x="197" y="116">1</text><text x="241" y="116">0</text>
+    <text x="109" y="160">1</text><text x="153" y="160">1</text><text x="197" y="160">0</text><text x="241" y="160">1</text>
+    <text x="109" y="204">0</text><text x="153" y="204">1</text><text x="197" y="204">1</text><text x="241" y="204">1</text>
+  </g>
+  <!-- the anti-diagonal row d = flip of the highlighted diagonal -->
+  <text x="44" y="252" font-size="13" font-weight="bold" fill="#cf222e">d</text>
+  <g font-size="15" text-anchor="middle" fill="#cf222e" font-weight="bold">
+    <text x="109" y="252">0</text><text x="153" y="252">1</text><text x="197" y="252">1</text><text x="241" y="252">0</text>
+  </g>
+  <text x="20" y="286" font-size="12" fill="#cf222e">d(aᵢ) = ¬ e aᵢ aᵢ  — differs from every row eaᵢ at the i-th cell, so d is no row at all.</text>
+</svg>

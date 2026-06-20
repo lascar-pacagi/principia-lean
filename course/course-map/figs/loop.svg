@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 180" width="460" height="180" font-family="sans-serif">
+  <defs>
+    <marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#1a7f37"/>
+    </marker>
+    <marker id="ar4" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#8250df"/>
+    </marker>
+  </defs>
+  <!-- the two nodes -->
+  <rect x="30" y="70" width="150" height="50" rx="8" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.6"/>
+  <text x="105" y="92" text-anchor="middle" font-size="15" font-weight="bold">⊢ φ</text>
+  <text x="105" y="110" text-anchor="middle" font-size="11" fill="#444">provable (a derivation)</text>
+  <rect x="280" y="70" width="150" height="50" rx="8" fill="#ddf4ff" stroke="#1f6feb" stroke-width="1.6"/>
+  <text x="355" y="92" text-anchor="middle" font-size="15" font-weight="bold">⊨ φ</text>
+  <text x="355" y="110" text-anchor="middle" font-size="11" fill="#444">true in all models</text>
+  <!-- soundness: ⊢ -> ⊨ (top arc) -->
+  <path d="M180,82 C 230,52 280,52 330,80" fill="none" stroke="#1a7f37" stroke-width="2" marker-end="url(#ar3)"/>
+  <text x="255" y="48" text-anchor="middle" font-size="12" fill="#1a7f37" font-weight="bold">soundness (1.4)</text>
+  <!-- completeness: ⊨ -> ⊢ (bottom arc) -->
+  <path d="M330,112 C 280,142 230,142 180,114" fill="none" stroke="#8250df" stroke-width="2" marker-end="url(#ar4)"/>
+  <text x="255" y="160" text-anchor="middle" font-size="12" fill="#8250df" font-weight="bold">completeness · Kalmár (1.6)</text>
+</svg>

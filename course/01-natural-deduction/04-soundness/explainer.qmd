@@ -1,0 +1,164 @@
+---
+title: "1.4 — Soundness: the rules don't lie  (Milestone M1)"
+---
+
+> **Where you are.** You have two turnstiles: `⊢` (there's a proof tree, slice 1.3) and `⊨` (true under
+> every valuation, slice 1.2). They've been separate. This slice builds the **first bridge**:
+> *soundness*, `Γ ⊢ φ → Γ ⊨ φ` — anything you can prove is actually true. It's the first **keystone**
+> theorem and **Milestone M1**, and it's what makes a prover trustworthy: a proof is a *certificate of
+> truth*. Code graduates into `Principia.NatDed.Soundness`.
+
+## 1. The question
+
+We *designed* the inference rules of slice 1.3 to look reasonable. But "looks reasonable" is not good
+enough — a single bad rule would let us prove falsehoods. So: **do the rules only ever derive true
+things?** If yes, then whenever the prover (next slice) returns a derivation, we can believe its
+conclusion without re-checking. Soundness is the theorem that earns that trust.
+
+## 2. What soundness says
+
+```lean
+theorem soundness {Γ φ} (d : Γ ⊢ φ) : Entails Γ φ
+```
+
+Unfolding `Entails`: for *every* valuation `v`, **if** `v` makes all of `Γ` true, **then** `v` makes `φ`
+true. In words: a derivation of `φ` from `Γ` guarantees `φ` holds wherever `Γ` does. The most important
+consequence is the closed case (`Γ = []`):
+
+```lean
+theorem tautology_of_proof {φ} (d : [] ⊢ φ) : Tautology φ
+```
+
+A proof from no assumptions certifies a **tautology**. This is the payoff: *build a proof tree, get a
+guarantee of validity for free.*
+
+## 3. The strategy: induction on the derivation
+
+A derivation is a tree (slice 1.3), so we prove soundness the way we proved everything about trees in
+`03-recursion` — **by induction on `d`**, one case per inference rule. The whole content is:
+
+> **every rule turns true premises into a true conclusion.**
+
+Soundness is therefore `eval_swap` from `03-recursion` writ large: a statement relating a *syntactic*
+construction (the derivation) to the *semantics* (`eval`), proved by structural induction. To keep each
+case to one line we first record, as helper lemmas, how each connective's truth value behaves:
+
+```lean
+eval_imp : eval v (a ⇒ b) = true ↔ (eval v a = true → eval v b = true)
+eval_and : eval v (a ⋏ b) = true ↔ (eval v a = true ∧ eval v b = true)
+eval_or  : eval v (a ⋎ b) = true ↔ (eval v a = true ∨ eval v b = true)
+eval_neg : eval v (∼a) = !eval v a                                   -- from slice 1.2
+```
+
+(Each is proved by unfolding `eval` and checking the `2×2` Bool truth table: `cases eval v a <;>
+cases eval v b <;> simp`.) These let us move between "the formula is true" and "this logical fact about
+its parts holds" without touching `Bool` arithmetic again. One more, for the classical rule:
+
+```lean
+byContra_eval : (eval v (∼a) = true → eval v ⊥ = true) → eval v a = true
+```
+
+— if assuming `∼a` true would force `⊥` true, then `a` is true (a case split on `eval v a`).
+
+## 4. The cases, in spirit
+
+A few representative ones (the full proof is in `Solution.lean`):
+
+- **`ax h`** (`h : a ∈ Γ`). The conclusion `a` is one of the assumptions, and `hΓ` says every assumption
+  is true — so `hΓ a h` *is* the proof. The base case.
+- **`impI d`** (with `ih : Entails (a :: Γ) b`). Goal `a ⇒ b` true. By `eval_imp`, that's "`a` true →
+  `b` true". So `intro ha`, and now `v` satisfies `a :: Γ` (assumption `a` by `ha`, the rest by `hΓ` —
+  packaged as `sat_cons ha hΓ`); the induction hypothesis hands back `b` true. **Discharging an
+  assumption on the proof side = adding a hypothesis on the truth side.**
+- **`impE d1 d2`** (modus ponens). `ih1` gives `a ⇒ b` true, i.e. (`eval_imp`) "`a`→`b`"; `ih2` gives
+  `a` true; apply. One line.
+- **`orE`**. `ih` for the disjunction gives (`eval_or`) `a` true ∨ `b` true; `cases` it, and the matching
+  branch's induction hypothesis (with `sat_cons`) finishes — exactly mirroring the rule's two arms.
+- **`raa d`** (the classical rule, `ih : Entails (∼a :: Γ) ⊥`). `apply byContra_eval`: it suffices to
+  show that assuming `∼a` true forces `⊥` true — which is just `ih` applied to `sat_cons`. This is the
+  one place classical reasoning enters, sealed inside `byContra_eval`.
+
+Notice the rhythm: **unfold the conclusion with a helper, feed the premises through the induction
+hypotheses (extending the context with `sat_cons` when the rule did).**
+
+## 5. A first dividend: consistency
+
+Soundness immediately rules out absurdity. If we could prove `⊥` from nothing, it would be a tautology —
+but `eval v ⊥ = false` always. Contradiction. So:
+
+```lean
+theorem consistency : ([] ⊢ Form.fls) → False
+```
+
+falls out in three lines (see the exercises). Our proof system can't prove falsehood — a non-trivial fact
+we get *for free* from the bridge we just built. (The reverse bridge, completeness, is slice 1.6.)
+
+## 6. Prove it
+
+The helper lemmas are given. Prove the two theorems (`make lab C=01-natural-deduction/04-soundness`):
+
+1. `soundness {Γ φ} (d : Γ ⊢ φ) : Entails Γ φ`  — the keystone, by `induction d`.
+2. `tautology_of_proof {φ} (d : [] ⊢ φ) : Tautology φ`  — specialise soundness to `Γ = []`.
+
+Try cold; §7 has hints, and §3–§4 are essentially the walkthrough.
+
+## 7. Hints for the skeleton
+
+**1 `soundness`.** *Nudge:* `induction d with | ax h => … | impI d ih => … | …`. Open each case with
+`intro v hΓ`. For a *conclusion* built with `⇒`/`⋏`/`⋎`, rewrite the goal with the matching `eval_…`
+helper; for a *premise* of that shape, rewrite the relevant hypothesis. Rules that extend the context
+(`impI`, `orE`, `raa`) feed `sat_cons` to the induction hypothesis. *More (per case):*
+  - `ax h`: `exact hΓ _ h`.
+  - `impI`/`impE`: `rw [eval_imp]` (on the goal / on `ih1 v hΓ`).
+  - `andI`/`andE₁`/`andE₂`: `rw [eval_and]`.
+  - `orI₁`/`orI₂`: `rw [eval_or]; exact Or.inl/​Or.inr …`. `orE`: `rw [eval_or] at …; cases …`.
+  - `flsE`: the hypothesis becomes `false = true`; `simp [eval] at h` closes the goal.
+  - `raa`: `apply byContra_eval; intro hna; exact ih v (sat_cons hna hΓ)`.
+
+**2 `tautology_of_proof`.** *Nudge:* `Tautology φ` is `∀ v, …`; apply `soundness d` to `v` and to a proof
+that the empty context is trivially satisfied. *More:* `fun v => soundness d v (by intro ψ h; cases h)`
+(no `ψ` can be a member of `[]`, so the membership case is vacuous).
+
+## 8. Exercises (optional, for fluency)
+
+1. **Consistency.** `consistency : ([] ⊢ Form.fls) → False`. *Hint:* a proof of `⊥` would make `⊥` a
+   tautology (`tautology_of_proof`); evaluate at any valuation and watch it contradict `eval v ⊥ = false`.
+2. **An atom is unprovable.** `not_provable_var : ([] ⊢ Form.var 0) → False`. *Hint:* same idea — the
+   valuation sending every atom to `false`.
+
+## 9. Corrections to the optional exercises
+
+### Exercise 1 — `consistency`
+
+```lean
+theorem consistency : ([] ⊢ Form.fls) → False := by
+  intro d
+  have h := tautology_of_proof d (fun _ => false)   -- h : eval (fun _ => false) ⊥ = true
+  simp [eval] at h                                   -- but eval … ⊥ = false, so h : False ⇒ closed
+```
+
+A closed proof of `⊥` would, by `tautology_of_proof`, make `⊥` valid — true under *every* valuation,
+including the all-false one. But `eval _ ⊥` is `false` by definition, so `h` becomes `false = true`,
+which `simp` recognises as absurd and uses to close the goal. The system is **consistent**, and we proved
+it without any new machinery — soundness did the work.
+
+### Exercise 2 — `not_provable_var`
+
+```lean
+theorem not_provable_var : ([] ⊢ Form.var 0) → False := by
+  intro d
+  have h := tautology_of_proof d (fun _ => false)
+  simp [eval] at h
+```
+
+Identical shape. `var 0` is not a tautology — the valuation `fun _ => false` makes it false — so it
+cannot be provable. This is the *contrapositive* of soundness in action ("not valid ⟹ not provable"), and
+it previews why a prover can correctly answer **no**: invalid formulas have a falsifying valuation, and
+soundness guarantees no proof can exist for them.
+
+## 10. Going further
+
+- **Logic and Proof** — `../../references/logic_and_proof`: the soundness theorem on paper; comparing
+  its case analysis to ours shows how faithfully the `Deriv` induction mirrors the textbook argument.
+- **Next: slice 1.5 — the prover.** We write a function that *searches* for derivations, ending the
+  by-hand misery of slice 1.3. Soundness is what lets us trust whatever it finds.

@@ -1,0 +1,140 @@
+---
+title: "5.1 — The diagonal argument, once and for all"
+---
+
+> **Where you are.** The finale: Gödel's incompleteness. Its reputation for mystery comes from
+> *self-reference* — a sentence that talks about itself. This first slice demystifies it completely. The
+> self-reference is **diagonalization**, the three-line trick behind Cantor's theorem, Russell's paradox,
+> the Liar, Turing's halting problem, Tarski's undefinability, and Gödel's incompleteness. We prove it
+> once, abstractly — **Lawvere's fixed-point theorem** — and the rest of Course 5 just *applies* it. Code
+> graduates into `Principia.Goedel.Diagonal`.
+
+## 1. One trick, six theorems
+
+Cantor: the reals outnumber the naturals. Russell: there's no set of all sets. Turing: no program decides
+halting. Tarski: no formula defines truth. Gödel: no consistent, rich theory proves all truths. These look
+unrelated. They are *the same proof*. Lawvere (1969) wrote it down in its purest form; everything else is a
+substitution into it.
+
+## 2. The diagonal, concretely (Cantor)
+
+Take any `e : A → (A → Bool)` — think of `e a` as "the subset of `A` coded by `a`," a row of 0/1s. Lay the
+rows in a square and look down the diagonal:
+
+![Flip the highlighted diagonal to build the row `d`. By construction `d` disagrees with row `e aᵢ` exactly at column `aᵢ`, so `d` equals **no** row — `e` misses it. No `A` can index all subsets of `A`.](fig-diagonal.svg){width=70%}
+
+The row `d a := ¬ e a a` cannot be any `e a₀`: if it were, then at the cell `a₀` we'd need
+`e a₀ a₀ = d a₀ = ¬ e a₀ a₀` — a bit equal to its own negation, impossible. That single impossible cell is
+the whole argument.
+
+## 3. Lawvere: the trick with the scenery removed
+
+Strip away "Bool" and "subset." What remains:
+
+```lean
+theorem lawvere (e : A → A → B) (he : ∀ f : A → B, ∃ a, e a = f) (g : B → B) : ∃ b, g b = b
+```
+
+*If `e` hits every function `A → B` (point-surjectivity), then every `g : B → B` has a fixed point.* The
+proof is the diagonal, verbatim:
+
+```lean
+  obtain ⟨a, ha⟩ := he (fun x => g (e x x))     -- surjectivity hits the "diagonal" function
+  exact ⟨e a a, (congrFun ha a).symm⟩           -- evaluate at a:  e a a = g (e a a)
+```
+
+Apply both sides at `a`: `e a a = (fun x => g (e x x)) a = g (e a a)`. So `e a a` is a fixed point of `g`.
+Three lines. That's it.
+
+**Now read it backwards.** Choose a `g` that has *no* fixed point; then `e` *cannot* be surjective.
+
+- `B = Bool`, `g = not` (no fixed point): no `e : A → (A → Bool)` is surjective — **Cantor** (`cantor`).
+- `B = Prop`, `g = ¬`: no proposition equals its own negation — the **Liar / Russell** core
+  (`no_self_neg`).
+- Later: `B = Prop`, `e` = a *truth predicate* → **Tarski** (5.2); `e` = a *provability predicate* →
+  **Gödel** (5.3).
+
+```lean
+theorem cantor (e : A → A → Bool) : ¬ (∀ f, ∃ a, e a = f) := by
+  intro he; obtain ⟨b, hb⟩ := lawvere e he (fun x => !x); cases b <;> simp at hb
+```
+
+## 4. The propositional heart
+
+Every one of these collapses to: **no proposition is its own negation.**
+
+```lean
+theorem no_self_neg : ¬ ∃ p : Prop, p ↔ ¬ p := by
+  rintro ⟨p, hp⟩
+  have hnp : ¬ p := fun h => hp.mp h h     -- if p, then ¬p, then ⊥ — so ¬p
+  exact hnp (hp.mpr hnp)                    -- but ¬p gives p; ⊥
+```
+
+That `p ↔ ¬p` is the Liar sentence ("this sentence is false"), Russell's set (`R ∈ R ↔ R ∉ R`), Cantor's
+diagonal cell, and — once "p" is "I am unprovable" — Gödel's sentence. Same impossibility, six costumes.
+
+## 5. Prove it
+
+Prove (`make lab C=05-goedel/01-diagonal`):
+
+1. `lawvere e he g : ∃ b, g b = b`
+2. `cantor e : ¬ (∀ f : A → Bool, ∃ a, e a = f)`
+3. `no_self_neg : ¬ ∃ p : Prop, p ↔ ¬ p`
+
+§3–§4 are the walkthrough. §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `lawvere`.** *Nudge:* apply surjectivity `he` to the diagonal function `fun x => g (e x x)`, getting
+`a` with `ha : e a = fun x => g (e x x)`. The witness is `e a a`; `congrFun ha a` gives `e a a = g (e a a)`,
+and `.symm` orients it as `g (e a a) = e a a`.
+
+**2 `cantor`.** *Nudge:* assume surjectivity `he`, then `lawvere e he (fun x => !x)` yields `b` with
+`!b = b`; `cases b <;> simp at hb` kills both cases.
+
+**3 `no_self_neg`.** *Nudge:* `rintro ⟨p, hp⟩`; first build `¬p` (assume `p`, then `hp.mp` gives `¬p`,
+applied to `p`); then feed that `¬p` back through `hp.mpr` to get `p`, and apply.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Turing from Lawvere.** Sketch how "no program decides halting" is the same theorem. (Hint: let `A` =
+   programs, `B = Bool`, and suppose a halting-decider made the relevant map surjective.)
+2. **Why surjectivity?** Where *exactly* does the proof of `lawvere` use that `e` hits *every* `f` — and
+   what goes wrong without it?
+3. **Russell.** Restate `no_self_neg` as Russell's paradox: with `R x := ¬ x x` (the set of sets not
+   containing themselves), what is `R R`?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — Turing
+
+Let `A` = programs (codes), and suppose `halts : A → A → Bool` decided whether program `a` halts on input
+`x`. Build the diagonal program `d` that, on input `x`, *runs forever if `halts x x` and halts otherwise* —
+i.e. `d` realises `fun x => ¬ halts x x`. If every behaviour were some program (`halts` "surjective"
+onto behaviours), `d` is some `a₀`, and asking whether `d` halts on `a₀` gives `halts a₀ a₀ = ¬ halts a₀ a₀`
+— the impossible diagonal cell. So no decider exists. It's `cantor` with "program" for `a` and "halts" for
+`e`.
+
+### Exercise 2 — the role of surjectivity
+
+`lawvere` uses `he` exactly once: to find an `a` with `e a = fun x => g (e x x)`. Surjectivity is what lets
+the *diagonal function* — which we built from `g` and `e` — be named by a point `a` *inside* `A`. That
+self-application `e a a` is the fixed point. Without surjectivity there's no guarantee the diagonal
+function is in the range, and indeed `g` need not have a fixed point (e.g. `not : Bool → Bool`): the
+contrapositive is precisely Cantor.
+
+### Exercise 3 — Russell
+
+With `R x := ¬ x x`, "the Russell set" `R` satisfies `R R = ¬ R R` — the proposition `R R` is equivalent to
+its own negation, which `no_self_neg` rules out. So there is no such self-membership relation /
+no set of all non-self-membered sets: the naïve comprehension that would build `R` is contradictory.
+
+## 9. Going further
+
+- **The unifying slogan.** *Diagonalisation = a fixed point you didn't want.* When `g` has none (negation),
+  the would-be surjection can't exist; when you're *forced* into the fixed point (a self-referential
+  sentence), you get a paradox or an incompleteness.
+- **Next: 5.2 — Tarski's undefinability of truth.** Substitute a *truth predicate* for `e` and the Liar
+  appears: no formula of a language can define truth for that very language.
+- **Then 5.3 — abstract first incompleteness.** Substitute *provability*; with the diagonal lemma
+  (self-reference) granted, a true-but-unprovable sentence is forced — Gödel.

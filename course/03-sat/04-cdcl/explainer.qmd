@@ -1,0 +1,193 @@
+---
+title: "3.5 — CDCL: learning from conflicts, and backjumping"
+---
+
+> **Where you are.** Slice 3.2's DPLL solves SAT by guessing and *chronologically* backtracking. That
+> wastes enormous work: it can rediscover the same contradiction thousands of times in different
+> branches. This slice builds **CDCL** — Conflict-Driven Clause Learning, the algorithm behind every
+> competitive SAT solver since ~2001 — which, every time it hits a conflict, **learns a clause** that
+> forbids the cause and **backjumps** straight past the irrelevant guesses. It's the single biggest idea
+> in practical SAT. Code graduates into `Principia.Sat.Cdcl`.
+>
+> **Up front, honestly:** this solver is **unverified** — we do *not* prove it sound (the analysis is
+> intricate). We justify it by **differential testing** against the *verified* `dpll` (the `#guard`s),
+> and note that in practice its UNSAT answers are trusted via the **verified LRAT checker** of slice 3.6.
+> "Fast untrusted solver + tiny verified checker" is the whole Course-3 thesis — and CDCL is the fast
+> untrusted solver.
+
+## 1. Why DPLL wastes work
+
+DPLL backtracks *chronologically*: hit a dead end, undo the **most recent** guess, try its opposite.
+Suppose variable `x₁` was guessed at the very top, and a contradiction only shows up after fifty more
+guesses — all caused by `x₁`. DPLL will flip the 50th guess, fail again, flip the 49th, fail again… it
+re-derives the same `x₁`-conflict over and over, never realising `x₁` was the culprit. CDCL fixes exactly
+this: it figures out *which* assignments caused the conflict, records that as a new clause, and jumps back
+to undo the real cause — skipping all the innocent guesses in between.
+
+## 2. The trail and decision levels
+
+CDCL tracks its assignment as a **trail** — a stack of assigned literals, each tagged with:
+
+- the **decision level** it was set at (how many guesses deep), and
+- its **reason**: the clause that *forced* it (a propagation), or `none` (a free guess, a *decision*).
+
+```lean
+structure TEntry where
+  lit    : Lit            -- the assigned literal
+  level  : Nat            -- decision level
+  reason : Option Clause  -- the clause that forced it, or `none` for a decision
+abbrev Trail := List TEntry      -- head = most recently assigned
+```
+
+A literal is **true** if it's on the trail, **false** if its negation is, **unassigned** otherwise — the
+helpers `assignedTrue` / `isUnassigned`. Reasons turn the trail into an **implication graph**: each forced
+literal points back, via its reason clause, to the literals that forced it. That graph is what conflict
+analysis walks.
+
+## 3. The loop: propagate, decide, conflict
+
+Each round (`cdclLoop`):
+
+1. **Propagate** (`bcp`). A clause is **unit** when all but one literal are false and one is unassigned —
+   that one is *forced* true. Keep propagating units (recording each one's reason) until nothing is forced
+   or a clause goes **conflict** (all literals false). This is the same `assign`/`clauseStatus` idea from
+   slice 3.1, now reading the trail.
+2. If propagation hits **no conflict**: if every variable is assigned, we have a model — **SAT**. Else
+   **decide** a free variable (bump the level) and loop.
+3. If propagation hits a **conflict** at decision level 0 (no guesses to blame): **UNSAT**.
+4. Conflict at level > 0: **learn and backjump** (§4–§5), then loop.
+
+You implement step-1's classifier, `clauseStatus` (§6); everything else is given.
+
+## 4. Clause learning by 1-UIP
+
+This is the heart. We have a **conflicting clause** (all its literals false). We want a *new* clause —
+implied by the formula — that captures why, and that will become unit right after we backjump.
+
+The trick: **resolve the conflict clause against the reasons of the literals it blames, newest first,
+until only one literal remains at the current decision level.** That stopping point is the **first unique
+implication point (1-UIP)**. Each resolution step is the very `resolvent` from Course 2 — so the learned
+clause is a genuine *logical consequence* of the formula (that's why this is sound, even though we don't
+prove it here).
+
+```lean
+def analyze (t : Trail) (d : Nat) : Nat → Clause → Clause
+  | 0, learned => learned
+  | fuel + 1, learned =>
+    if (learned.filter (fun lit => decide (litLevel t lit = d))).length ≤ 1 then learned  -- 1-UIP reached
+    else match t.find? (fun e => e.level = d && e.reason.isSome
+                                 && learned.any (fun lit => decide (lit = e.lit.neg))) with
+      | some e => match e.reason with
+        | some r => analyze t d fuel (resolvent learned r e.lit.neg)    -- resolve away the newest blamed literal
+        | none => learned
+      | none => learned
+```
+
+**Worked example.** Decide `a` (level 1), `b` (level 2), `c` (level 3). Then unit propagation at level 3:
+
+| clause | forces | reason |
+|---|---|---|
+| `¬c ∨ d` | `d` | `¬c ∨ d` |
+| `¬a ∨ ¬d ∨ e` | `e` | `¬a ∨ ¬d ∨ e` |
+| `¬b ∨ ¬e ∨ f` | `f` | `¬b ∨ ¬e ∨ f` |
+| `¬e ∨ ¬f` | — | **conflict** (both `e`, `f` true) |
+
+Start from the conflict `¬e ∨ ¬f`. Its level-3 literals are `¬e` and `¬f` (both `e`,`f` set at level 3) —
+two, so resolve. Newest is `f`, reason `¬b ∨ ¬e ∨ f`; resolving on `f`:
+
+`(¬e ∨ ¬f) ⊗ (¬b ∨ ¬e ∨ f)  =  ¬e ∨ ¬b`.
+
+Now only **one** level-3 literal remains (`¬e`; `¬b` is from level 2) — that's the 1-UIP. **Learned
+clause: `¬e ∨ ¬b`.** It says "you can't have both `e` and `b`" — a fact the original clauses implied but
+never stated, distilled from this conflict.
+
+## 5. Backjumping
+
+Where to jump back to? To the **second-highest decision level in the learned clause** — here `¬b` sits at
+level 2, so we backjump to **level 2** (undoing levels 3, discarding `c`, `d`, `e`, `f`). We pop the trail
+to that level and add `¬e ∨ ¬b` to the clause set. Now, with `b` still true (level 2) and `e` unassigned,
+`¬e ∨ ¬b` is **unit** — it immediately forces `¬e` (the *asserting literal*, the 1-UIP). So the backjump
+isn't just undoing: it lands us with new propagation, having *learned* never to set `e` while `b` holds.
+
+```lean
+def backjumpLevel t d learned :=
+  ((learned.filter (fun lit => litLevel t lit ≠ d)).map (litLevel t)).foldl Nat.max 0
+```
+
+When the learned clause's other literals span several lower levels, this can jump back **many** levels at
+once — *non-chronological* backtracking. That's what saves DPLL's wasted work: CDCL undoes straight to the
+real cause and never revisits the dead region.
+
+## 6. Prove it
+
+Everything is given except `clauseStatus`. Implement it (`make lab C=03-sat/04-cdcl`), and the differential
+`#guard`s confirm your solver agrees with the verified `dpll`:
+
+```lean
+def clauseStatus (t : Trail) (c : Clause) : CStatus := …
+```
+
+- `.sat` if some literal is `assignedTrue`; otherwise look at the unassigned literals
+  (`c.filter (isUnassigned t)`): none ⇒ `.conflict`, one ⇒ `.unit`, ≥2 ⇒ `.open_`.
+
+§3 explains what each status means to the solver. Try it; §7 has hints.
+
+## 7. Hints for the skeleton
+
+*Nudge:* the four cases line up with: a true literal present; or the count of *unassigned* literals being
+0, 1, or more. *More:*
+
+```lean
+def clauseStatus (t : Trail) (c : Clause) : CStatus :=
+  if c.any (fun l => assignedTrue t l) then .sat
+  else match c.filter (fun l => isUnassigned t l) with
+    | []  => .conflict
+    | [l] => .unit l
+    | _   => .open_
+```
+
+If a `#guard` fails, your classifier disagrees with `dpll` somewhere — most likely the `.sat` check (a
+satisfied clause must never be reported as conflict/unit) or the unit/conflict split.
+
+## 8. Exercises (optional, for fluency)
+
+1. **Trace the example.** On §4's clause set, hand-run CDCL: list the trail after the level-3
+   propagations, identify the conflict, and reproduce the resolution `(¬e∨¬f) ⊗ (¬b∨¬e∨f) = ¬e∨¬b`. Which
+   literal is the 1-UIP, and what level do we backjump to?
+2. **Why these stopping rules?** Why does `analyze` stop at *one* literal at the current level (rather than
+   resolving everything away), and why is the backjump target the *second*-highest level?
+
+## 9. Corrections to the optional exercises
+
+### Exercise 1 — tracing the example
+
+After deciding `a,b,c` and propagating, the trail (most-recent first) is `f(3), e(3), d(3), c(3,dec),
+b(2,dec), a(1,dec)`. The clause `¬e∨¬f` is conflicting (`e,f` both true). Resolving away the newest
+level-3 literal `f` with its reason `¬b∨¬e∨f` cancels `f`/`¬f` and unions the rest: `¬e ∨ ¬b` (the two
+`¬e` copies merge). Only `¬e` is now at level 3, so it's the **1-UIP**; `¬b` is at level 2, so we
+**backjump to level 2**, where `¬e∨¬b` becomes unit and asserts `¬e`.
+
+### Exercise 2 — the stopping rules
+
+*One literal at the current level* is the definition of a unique implication point: every path from the
+last decision to the conflict passes through that single literal, so negating it (asserting the UIP) is
+enough to avoid the conflict — a maximally-useful, minimal-ish learned clause. Resolving *all* the way to
+decisions instead would give the weaker "decision clause" (only chronological backjumps). *Second-highest
+level* is the deepest level at which the learned clause is **unit**: every literal except the UIP is false
+there, so backjumping further would lose propagations, and jumping less would re-enter the conflict
+region. It's the exact level where the new clause does productive work.
+
+## 10. Going further
+
+- **Watched literals.** Real solvers don't rescan every clause to find units; each clause *watches* two
+  literals and is only revisited when a watch becomes false — making `bcp` near-constant per propagation.
+  Pure optimisation; behaviour is unchanged.
+- **Restarts & VSIDS.** Periodically discard the trail (keeping learned clauses) and prefer to branch on
+  variables involved in recent conflicts. These heuristics, plus clause learning, are what make modern
+  solvers handle millions of variables.
+- **The honest verification story.** This `cdcl` is unverified, validated here by differential testing.
+  In production you don't trust it: it emits its learned-clause derivation as a **DRAT/LRAT proof**, and a
+  *verified* checker (slice 3.6's `check_unsat`, or Lean core's `bv_decide`) re-validates the UNSAT —
+  because every learned clause *is* a resolvent (§4), the proof is exactly a resolution derivation the
+  checker can replay. Fast where speed is needed, verified where trust is needed.
+- **Next: Course 4 — Euclid** (LeanEuclid + SMT), then **Course 5 — Gödel**.

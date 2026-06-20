@@ -1,0 +1,268 @@
+---
+title: "02 — Propositions: the connectives, and how to build and break them"
+---
+
+> **Where you are.** You've proved equalities by `rfl`/`rw` and facts about all naturals by
+> `induction`. Now we turn to **logic itself**: statements built with "implies", "and", "or", "not",
+> "iff", "for all", "there exists". For each connective you'll learn its *two moves* — how to **build**
+> a proof and how to **use** one — and the tactics that perform them. That build/use pairing is
+> precisely **natural deduction**, the proof system we formalize a prover for in Course 1. So this is
+> both your logic toolkit and your first look at the thing Course 1 is about.
+
+## 1. The question
+
+In `01-naturals` every goal was an equation. But most of mathematics is statements *connected* by logic:
+"*if* `n` is even *then* `n+2` is even", "`x = 0` *or* `x ≠ 0`", "*for all* `n`, *there exists* a prime
+above it." How do you prove a statement shaped like `p → (q ∧ r)`? You don't memorize a hundred tricks —
+you learn, for **each connective**, the same two questions:
+
+- **Introduction:** how do I *build* a proof of a statement with this connective on the outside?
+- **Elimination:** given a proof with this connective on the outside, how do I *use* it?
+
+Two moves per connective. That's the whole game, and it's astonishingly uniform.
+
+## 2. The idea: every connective is a type with an intro rule and an elim rule
+
+Recall the `00-setup` slogan: **a proposition is a type, and a proof is a value of that type.** Each
+connective is a way of *forming* a new proposition-type out of others, and comes with:
+
+- an **introduction** rule — the constructor(s) that *make* a value of that type, and
+- an **elimination** rule — the way to *consume* such a value.
+
+You already saw this for `∧`: a proof of `p ∧ q` is *built* by pairing (`⟨_, _⟩`) and *used* by
+projecting (`.1`, `.2`). Every connective follows the same script. Here's the whole map; the rest of the
+lesson fills it in:
+
+| Proposition | **Build it** (introduction) | **Use it** (elimination) |
+|---|---|---|
+| `p → q` | `intro h`, then prove `q` (a function) | apply it: `f hp`, or tactic `apply f` |
+| `p ∧ q` | `⟨_, _⟩` or `constructor` | `h.1`, `h.2`, or `obtain ⟨hp, hq⟩ := h` |
+| `p ∨ q` | `Or.inl _` / `Or.inr _`, or `left` / `right` | `cases h with | inl hp => … | inr hq => …` |
+| `¬ p` (= `p → False`) | `intro hp`, then derive `False` | feed it a proof of `p` to get `False` |
+| `False` | — (no way to build one honestly) | `False.elim` / `exfalso` — anything follows |
+| `True` | `trivial` (or `True.intro`) | — (carries no information) |
+| `p ↔ q` | `⟨_, _⟩` or `constructor` (two directions) | `.mp` (`p→q`), `.mpr` (`q→p`) |
+| `∀ x, P x` | `intro x`, then prove `P x` | apply to a term: `h a : P a` |
+| `∃ x, P x` | `⟨a, _⟩` — give a witness `a` and a proof | `obtain ⟨x, hx⟩ := h` |
+
+> **This table *is* natural deduction.** Logicians write these as inference rules named `∧I`/`∧E`,
+> `→I`/`→E` (modus ponens), `∨I`/`∨E`, and so on. In Lean they're built into the type theory and we
+> invoke them with tactics. In **Course 1** we'll make a natural-deduction system a *first-class object*
+> — the rules become data, we write a prover that *searches* for derivations built from them, and we
+> *prove that prover sound*. Keep this table in mind; you're about to formalize it.
+
+## 3. In Lean, connective by connective
+
+For each one: the intro move, the elim move, a tiny worked example. (The examples here are deliberately
+*different* from your six goals — they teach the move so you can apply it yourself.)
+
+### 3.1 Implication `→` — proofs are functions
+
+A proof of `p → q` is literally a **function** turning a proof of `p` into a proof of `q`.
+
+- **Build:** `intro h` assumes `h : p` and leaves you proving `q`.
+- **Use:** if `f : p → q` and `hp : p`, then `f hp : q` (function application). In tactic mode,
+  `apply f` reduces a goal `q` to the goal `p`.
+
+```lean
+example (p : Prop) : p → p := by
+  intro h     -- assume h : p; goal becomes ⊢ p
+  exact h
+
+-- modus ponens: using an implication
+example (p q : Prop) (hp : p) (hpq : p → q) : q := hpq hp
+```
+
+`apply` is the "work backwards" version: to prove `q` using `hpq : p → q`, `apply hpq` changes the goal
+to `p`.
+
+### 3.2 Conjunction `∧` — pair and project
+
+- **Build:** `⟨hp, hq⟩` (anonymous constructor), or `constructor` to split the goal `p ∧ q` into `p` and `q`.
+- **Use:** `h.1 : p` and `h.2 : q`; or `obtain ⟨hp, hq⟩ := h` to name both halves at once.
+
+```lean
+example (p q : Prop) (h : p ∧ q) : p := h.1
+
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := ⟨hp, hq⟩
+```
+
+`obtain` (and its cousin `rcases`) destructures — and it handles nesting: from `h : p ∧ (q ∧ r)` you can
+write `obtain ⟨hp, hq, hr⟩ := h` to get all three at once.
+
+### 3.3 Disjunction `∨` — choose, or split
+
+Unlike `∧`, a proof of `p ∨ q` carries only *one* side, and you don't get to assume which.
+
+- **Build:** `Or.inl hp : p ∨ q` (you have the left) or `Or.inr hq : p ∨ q` (the right). In tactic mode,
+  `left` / `right` pick which to prove.
+- **Use:** `cases h with | inl hp => … | inr hq => …` — you must handle **both** possibilities, since a
+  proof could be either.
+
+```lean
+example (p q : Prop) (hp : p) : p ∨ q := Or.inl hp
+
+example (p q : Prop) (h : p ∨ q) : q ∨ p := by
+  cases h with
+  | inl hp => right; exact hp   -- got the left; the goal's right side is p
+  | inr hq => left;  exact hq
+```
+
+(That second example *is* close to a goal — but try yours with `Or.inl`/`Or.inr` instead of `left`/`right`,
+or vice versa, to feel both styles.)
+
+### 3.4 `False`, `True`, and negation `¬`
+
+`False` is the proposition with **no** proof. You can never build one honestly — but *if* you have one,
+**anything** follows (`False.elim`, or the tactic `exfalso` which turns any goal into `⊢ False`). `True`
+is the opposite: trivially provable (`trivial`), and useless as a hypothesis.
+
+Negation is defined in terms of these: **`¬p` is just notation for `p → False`.** So negation needs no
+new rules — it's implication into `False`:
+
+- **Build `¬p`:** `intro hp` (assume `p`), then derive `False`.
+- **Use `hnp : ¬p`:** feed it a proof of `p`; `hnp hp : False`.
+
+```lean
+example (p : Prop) (hp : p) : ¬¬p := by
+  intro hnp      -- hnp : ¬p, i.e. p → False; goal ⊢ False
+  exact hnp hp
+
+example (p : Prop) : False → p := by
+  intro h
+  exact h.elim   -- from False, conclude anything
+```
+
+### 3.5 Iff `↔` — two implications in a bundle
+
+`p ↔ q` packages `p → q` and `q → p`.
+
+- **Build:** `⟨hmp, hmpr⟩` or `constructor` (two goals: `p → q`, then `q → p`).
+- **Use:** `h.mp : p → q` and `h.mpr : q → p`.
+
+```lean
+example (p : Prop) : p ↔ p := ⟨fun h => h, fun h => h⟩
+```
+
+### 3.6 Quantifiers `∀` and `∃`
+
+`∀ x, P x` is, again, a **function**: give it any `x` and it returns a proof of `P x`.
+
+- **Build:** `intro x`, then prove `P x`. **Use:** apply to a term — `h a : P a`.
+
+`∃ x, P x` is a **pair**: a witness together with a proof about it.
+
+- **Build:** `⟨a, ha⟩` — supply the witness `a` and a proof `ha : P a`. **Use:** `obtain ⟨x, hx⟩ := h`
+  to get a witness `x` and its property `hx : P x`.
+
+```lean
+example : ∀ n : Nat, n = n := by
+  intro n; rfl
+
+example : ∃ n : Nat, n + 1 = 1 := ⟨0, rfl⟩   -- witness 0, proof that 0+1 = 1
+```
+
+Notice `∀` is the same "build with `intro`, use by applying" as `→` — indeed `p → q` is just `∀ _ : p, q`.
+
+## 4. Constructive vs classical (a one-paragraph teaser)
+
+Every rule above lets you *construct* a proof, so everything you prove here is **constructive** — and
+`#print axioms` will report *no axioms*. Some famous classical laws — `¬¬p → p` (double-negation
+elimination) and `p ∨ ¬p` (excluded middle) — *cannot* be proved by these rules alone; they need an
+extra principle. Lean has it (`Classical.em`), but using it shows up as a dependency on
+`Classical.choice`. We'll meet that distinction head-on in **Course 0.4**. For now, everything you prove
+is constructive and axiom-free — keep it that way.
+
+## 5. Prove it
+
+Open `Skeleton.lean`; prove the six theorems (all constructive). Check with:
+
+```bash
+make lab C=00-foundations/02-propositions
+```
+
+1. `imp_trans : (p → q) → (q → r) → (p → r)`  — implication
+2. `and_reassoc : p ∧ (q ∧ r) → (p ∧ q) ∧ r`  — conjunction
+3. `or_comm' : p ∨ q → q ∨ p`                  — disjunction
+4. `contrapositive : (p → q) → ¬q → ¬p`        — negation
+5. `iff_symm : (p ↔ q) → (q ↔ p)`              — iff
+6. `exists_imp : (∀ x, p x → q x) → (∃ x, p x) → ∃ x, q x`  — quantifiers
+
+Each is one application of a move from §3. Try cold first; §6 has graduated hints; `Solution.lean` is
+the last resort.
+
+## 6. Hints for the skeleton
+
+**1 `imp_trans`.** *Nudge:* the goal is an implication, so `intro` the new hypothesis first; then you
+have `hp : p` and want `r`. *More:* chain the functions — `hpq hp : q`, then `hqr` on that.
+
+**2 `and_reassoc`.** *Nudge:* take the hypothesis apart, then build the new shape. *More:*
+`obtain ⟨hp, hq, hr⟩ := h`, then `exact ⟨⟨hp, hq⟩, hr⟩`.
+
+**3 `or_comm'`.** *Nudge:* you can't project a disjunction — you must `cases` on it. In each branch you
+have one side; put it on the *other* side of the goal. *More:* `Or.inr` in the `inl` branch, `Or.inl` in
+the `inr` branch (or `right`/`left`).
+
+**4 `contrapositive`.** *Nudge:* `¬q` and `¬p` are arrows into `False`; `intro` both, then your goal is
+`False`. *More:* you'll have `hnq : ¬q`, `hp : p`; turn `hp` into a `q` with `h`, then hit `hnq` with it.
+
+**5 `iff_symm`.** *Nudge:* an iff is a pair of implications — `constructor` asks for both. *More:* the
+two directions are exactly `h.mpr` and `h.mp`.
+
+**6 `exists_imp`.** *Nudge:* you can't do anything with `∃` until you open it — `obtain` a witness. *More:*
+`obtain ⟨x, hpx⟩ := hex`, then build a new existential `⟨x, …⟩` whose proof is `h x hpx`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Currying.** `curry : (p ∧ q → r) ↔ (p → q → r)`. *Hint:* `constructor`; one direction `intro`s a
+   pair and the other rebuilds it.
+2. **De Morgan (constructive).** `not_or : ¬(p ∨ q) ↔ ¬p ∧ ¬q`. *Hint:* for the forward direction, build
+   the `∧` of two negations, each a `fun … => …` that injects into the `∨`; for the backward direction,
+   `cases` the disjunction.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — `curry`
+
+```lean
+theorem curry (p q r : Prop) : (p ∧ q → r) ↔ (p → q → r) := by
+  constructor
+  · intro h hp hq; exact h ⟨hp, hq⟩
+  · intro h hpq;   exact h hpq.1 hpq.2
+```
+
+The two directions are mirror images. **Forward** (`p ∧ q → r ⊢ p → q → r`): `intro h hp hq` peels the
+three arrows, giving `h : p ∧ q → r`, `hp : p`, `hq : q`; reassemble the pair and apply: `h ⟨hp, hq⟩`.
+**Backward** (`p → q → r ⊢ p ∧ q → r`): `intro h hpq` gives the two-argument function `h` and a pair
+`hpq : p ∧ q`; feed it the projections: `h hpq.1 hpq.2`. Currying is exactly the type-theory fact that a
+function *of a pair* and a function *of two arguments* carry the same information.
+
+### Exercise 2 — `not_or`
+
+```lean
+theorem not_or (p q : Prop) : ¬(p ∨ q) ↔ ¬p ∧ ¬q := by
+  constructor
+  · intro h
+    exact ⟨fun hp => h (Or.inl hp), fun hq => h (Or.inr hq)⟩
+  · intro h hpq
+    cases hpq with
+    | inl hp => exact h.1 hp
+    | inr hq => exact h.2 hq
+```
+
+**Forward** (`¬(p ∨ q) ⊢ ¬p ∧ ¬q`): from `h : (p ∨ q) → False` build both negations at once. `¬p` is
+`fun hp => h (Or.inl hp)` — given a `p`, inject it left to make a `p ∨ q`, then `h` gives `False`;
+symmetrically for `¬q`. **Backward** (`¬p ∧ ¬q ⊢ ¬(p ∨ q)`): `intro h hpq` leaves goal `False` with
+`hpq : p ∨ q`; `cases` it, and whichever side you're on contradicts the matching half of `h`. Note this
+direction of De Morgan is fully constructive — no excluded middle needed (unlike `¬(p ∧ q) → ¬p ∨ ¬q`,
+which *does* need it; a good thing to ponder before Course 0.4).
+
+## 9. Going further
+
+- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, chapters *Propositions and
+  Proofs* and *Quantifiers and Equality*: the complete account of every connective and tactic here.
+- **Logic and Proof** — `../../references/logic_and_proof`: the same logic from the *natural deduction*
+  side (inference rules, on paper), which is exactly what Course 1 formalizes.
+- **Next:** Course 0.3 (inductive types & recursion in depth) and 0.4 (natural deduction on paper ↔ Lean,
+  and the constructive-vs-classical line) — then Course 1, where we build and verify a prover for the
+  very rules in §2's table.

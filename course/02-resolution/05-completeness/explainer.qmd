@@ -1,0 +1,158 @@
+---
+title: "2.5 — A verified resolution decision procedure (and the completeness keystone)"
+---
+
+> **Where you are.** Soundness (2.4) made the prover's *yes* trustworthy. This finale cashes that out
+> into a **verified resolution-based tautology prover**, ties resolution back to Course 1's natural
+> deduction, and then *studies* the one piece that stays hard — full refutation-completeness — which we
+> flag as the marked stretch (like FOL completeness). Code graduates into `Principia.Resolution.Completeness`.
+
+## 1. The two directions
+
+Resolution as a decision method has two halves:
+
+- **Soundness / "yes":** if the search finds `□`, the set is unsatisfiable. *Done* (slice 2.4), and below
+  we package it into a runnable, certified prover.
+- **Completeness / "no":** if the set is unsatisfiable, the search *will* find `□` (with enough fuel).
+  This is `S.Unsat → Refut S []` — the **hard keystone** (§4).
+
+The yes-direction is what makes the prover *usable and trustworthy today*; the no-direction is what would
+make its "not found" conclusive.
+
+## 2. The verified decision procedure
+
+Composing slice 2.3's prover with slice 2.4's soundness:
+
+```lean
+theorem refute?_unsat {S fuel} (h : (refute? S fuel).isSome) : S.Unsat := by
+  cases hp : refute? S fuel with
+  | none   => rw [hp] at h; simp at h
+  | some d => exact refut_unsat d            -- the search returned a real refutation; 2.4 finishes
+```
+
+So a successful search is a *certificate* of unsatisfiability. Push it through slice 2.1's bridge and you
+get a **verified tautology prover**:
+
+```lean
+theorem prove_taut_by_resolution {φ fuel} (h : (refute? (toCnf false φ) fuel).isSome) : Tautology φ := by
+  cases hp : refute? (toCnf false φ) fuel with
+  | none   => rw [hp] at h; simp at h
+  | some d => exact taut_of_refut d
+```
+
+And it *runs*. `by decide` evaluates the search and certifies the result — including formulas the
+slice-1.5 natural-deduction search **couldn't** find:
+
+```lean
+example : Tautology (φ ⇒ φ) := prove_taut_by_resolution (fuel := 4) (by decide)
+example : Tautology (((p ⇒ q) ⇒ p) ⇒ p) := prove_taut_by_resolution (fuel := 8) (by decide)  -- Peirce!
+```
+
+Peirce's law fell out automatically: refute the clauses of its negation, and soundness + the bridge do
+the rest. Prover #2 earns its keep.
+
+## 3. The tie to Course 1
+
+The two provers decide the *same* problem, and one direction of that is now a clean composition:
+
+```lean
+theorem refutable_to_provable {φ} (d : Refut (toCnf false φ) []) : Nonempty ([] ⊢ φ) :=
+  Form.provable_iff_tautology.mpr (taut_of_refut d)
+```
+
+A resolution refutation of `∼φ` yields a *natural-deduction* proof of `φ` — chaining 2.4 soundness
+(`taut_of_refut`) with Course 1's completeness (`provable_iff_tautology`). The converse (`⊢ φ ⇒ resolution
+refutes ∼φ`) reduces to the hard keystone, §4.
+
+## 4. Study: full refutation-completeness (the flagged keystone)
+
+The statement we are *not* proving here:
+
+> **Refutation-completeness.** If `S` is unsatisfiable, then `□` is derivable: `S.Unsat → Refut S []`.
+
+It's true, and the classic proof is elementary in spirit — **induction on the number of variables**:
+
+1. *Base.* With no variables, every clause is `□`; an unsatisfiable set must contain one, so `hyp` it.
+2. *Step (eliminate variable `p`).* Split `S` by the two truth values of `p`: `S|ₚ₌₁` drops clauses
+   containing `p` and erases `∼p` from the rest; `S|ₚ₌₀` symmetrically. Both are unsatisfiable and use
+   one fewer variable, so by induction each has a refutation. **Lift** those refutations back to `S`:
+   the one from `S|ₚ₌₁` becomes a derivation of `□` or the unit `[∼p]`; the one from `S|ₚ₌₀` a derivation
+   of `□` or `[p]`; resolving the two units gives `□`.
+
+So why is it research-grade *here*? Our clauses are `List Lit`, and the proof treats clauses **as sets**:
+the lifting re-adds a literal after an `erase`, reorders, and merges duplicates — but resolution has no
+permutation or weakening rule, so each of those moves needs its own congruence lemma, and the lifting
+recursion carries fiddly disjunctive bookkeeping (`□` vs `[p]` vs `[∼p]`). The clean fix is to represent
+clauses as **finite sets**, which is a sizeable refactor of slices 2.1–2.4. (Lean's Mathlib and the
+`FormalizedFormalLogic` project do exactly this — see `references/`.) We mark it the stretch, exactly as
+with FOL completeness — and note that **Course 1's natural-deduction prover already has full completeness**
+(`provable_iff_tautology`), so "provable ⟺ valid" is established for the project; resolution simply
+realises the *same* truth through a different engine.
+
+## 5. Prove it
+
+Compose the course's theorems (`make lab C=02-resolution/05-completeness`):
+
+1. `refute?_unsat {S fuel} (h : (refute? S fuel).isSome) : S.Unsat`
+2. `prove_taut_by_resolution {φ fuel} (h : (refute? (toCnf false φ) fuel).isSome) : Tautology φ`
+3. `refutable_to_provable {φ} (d : Refut (toCnf false φ) []) : Nonempty ([] ⊢ φ)`
+
+§2–§3 are the walkthrough. Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 & 2.** *Nudge:* same shape as `refute?_refutable` (slice 2.3): `cases hp : refute? …`; the `none`
+branch contradicts `h` (`rw [hp] at h; simp at h`); the `some d` branch hands you a `Refut`, finished by
+`refut_unsat d` (for #1) or `taut_of_refut d` (for #2).
+
+**3.** *Nudge:* no `cases` needed — it's a one-liner. `taut_of_refut d : Tautology φ`, and
+`Form.provable_iff_tautology.mpr` turns that into `Nonempty ([] ⊢ φ)`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Certify by resolution.** Prove `Tautology ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 0)` via
+   `prove_taut_by_resolution (by decide)` (fuel `5` suffices). Recall the slice-1.5 ND prover *failed* on
+   this — resolution succeeds.
+2. **Conceptual.** Why is the "yes" direction (`refute?_unsat`) a two-line composition, while the "no"
+   direction (refutation-completeness) is research-grade? What does that asymmetry say about the two ways
+   a search can be wrong?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — `(p ∧ q) ⇒ p` by resolution
+
+```lean
+example : Form.Tautology ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 0) :=
+  prove_taut_by_resolution (fuel := 5) (by decide)
+```
+
+`refute? (toCnf false ((p∧q)⇒p)) 5` finds `□` (the clauses of `∼((p∧q)⇒p) = p ∧ q ∧ ∼p` resolve to the
+empty clause); `decide` computes that, and `prove_taut_by_resolution` certifies validity. The slice-1.5
+search returned `none` here because it never did `∧`-elimination — resolution, working on clauses, has no
+such blind spot.
+
+### Exercise 2 — the asymmetry
+
+"Yes" is *soundness*: it just composes facts you already proved — a found `□` is a real refutation
+(typed), and soundness says a refutation means unsat. Two lines, because the certificate came for free
+with the search's result. "No" is *completeness*: it must show a refutation *exists* for every
+unsatisfiable set — a statement about the search space as a whole, proved by constructing a derivation
+via induction over the variables, with all the set-like clause bookkeeping that entails. The asymmetry is
+general: a wrong "yes" would be an *unsound* step (easy to rule out, locally); a wrong "no" would be a
+*gap in coverage* (hard to rule out, globally). It's the same reason slice 1.5's prover had a trustworthy
+"yes" long before Course 1 could justify a "no".
+
+## 9. Course 2 complete — and what's next
+
+Course 2 delivered **prover #2**: CNF conversion (faithful), the resolution rule, a saturation search, and
+its **soundness** — packaged into a *verified, runnable tautology prover* and tied to Course 1. Full
+refutation-completeness is the marked stretch, studied above.
+
+- **Stretch — full completeness:** refactor clauses to finite sets, then the variable-elimination
+  argument of §4. A self-contained project; `references/` has worked accounts.
+- **Stretch — first-order resolution:** add terms + unification (most-general unifiers) and the lifting
+  lemma; the prover then runs on FOL (refutation-complete, semi-decidable).
+- **Next: Course 3 — a verified SAT solver.** DPLL/CDCL is resolution made practical (learned clauses
+  *are* resolvents; DRAT/LRAT UNSAT certificates *are* resolution proofs). There the keystone — a verified
+  **LRAT certificate checker** (`check proof cnf → cnf.Unsat`) — is fully achievable, and is the
+  real-world version of the trustworthy-UNSAT pipeline this course is built around.

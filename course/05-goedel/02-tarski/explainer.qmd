@@ -1,0 +1,137 @@
+---
+title: "5.2 — Tarski: truth cannot define itself"
+---
+
+> **Where you are.** Slice 5.1 proved the diagonal argument abstractly. Now we make the first big
+> substitution: put a **truth predicate** where the surjection was, and the Liar paradox turns into a
+> theorem — **Tarski's undefinability of truth** (1933): *no language can define its own notion of truth.*
+> It's the dress rehearsal for Gödel (5.3), which puts *provability* in the same slot. Code graduates into
+> `Principia.Goedel.Tarski`.
+
+## 1. What would a truth predicate be?
+
+Imagine a language whose sentences talk about, among other things, *its own sentences*. A **truth
+predicate** would be a formula `Tr(x)` in the language such that, for every sentence `φ`,
+
+```
+        Tr(⌜φ⌝)   ↔   φ            (Tarski's "T-schema")
+```
+
+i.e. "‘φ’ is true" holds exactly when `φ` does. That seems utterly reasonable — it's just what "true"
+means. Tarski's shock: **no such formula can exist** in the language itself. Truth is always bigger than
+the language it's about.
+
+## 2. The Liar, one line deep
+
+Why not? Because a truth predicate, combined with self-reference, builds the **Liar**: *"this sentence is
+false."* Call it `s`. Then `s` is true iff what it says holds — iff `s` is *not* true:
+
+```
+        True s   ↔   ¬ True s
+```
+
+That's a proposition equivalent to its own negation — exactly `no_self_neg` from 5.1, which is impossible.
+So whatever lets us build `s` must be rejected; the culprit is the assumption that truth is **definable**
+inside the language.
+
+## 3. The framework
+
+We model a language abstractly. The key extra ingredient over 5.1 is the **diagonal lemma**: *any
+definable predicate `P` has a sentence that asserts `P` of itself.* (This is the self-reference engine; in
+a real arithmetic theory it's a theorem proved via Gödel numbering — here an honest hypothesis.)
+
+```lean
+structure Lang where
+  Sentence  : Type
+  True_     : Sentence → Prop                              -- the (external) semantic truth
+  neg       : Sentence → Sentence
+  neg_true  : ∀ s, True_ (neg s) ↔ ¬ True_ s
+  Definable : (Sentence → Prop) → Prop                     -- which predicates the language can express
+  neg_def   : ∀ P, Definable P → Definable (fun s => ¬ P s)   -- definable predicates are closed under ¬
+  diagonal  : ∀ P, Definable P → ∃ s, True_ s ↔ P s        -- the diagonal lemma (self-reference)
+```
+
+The crucial distinction: `True_` lives in the **metalanguage** (it's a `Prop`-valued function we use to
+talk *about* sentences), while `Definable` marks which predicates the **object language** can express. The
+question is whether `True_` is one of the latter.
+
+## 4. The proof
+
+```lean
+theorem tarski (L : Lang) : ¬ L.Definable L.True_
+```
+
+*Suppose* `True_` were definable. Definable predicates are closed under negation, so `fun s => ¬ True_ s`
+is definable too. Apply the diagonal lemma to it: there's a sentence `s` with `True_ s ↔ ¬ True_ s` — the
+Liar. That's `∃ p : Prop, p ↔ ¬ p`, which `no_self_neg` forbids. Contradiction; truth is not definable.
+
+```lean
+  intro hdef
+  have hnd := L.neg_def _ hdef          -- ¬True_ is definable
+  obtain ⟨s, hs⟩ := L.diagonal _ hnd    -- the Liar sentence:  True_ s ↔ ¬ True_ s
+  exact no_self_neg ⟨_, hs⟩
+```
+
+Three lines — because all the work was done in 5.1. Tarski is the diagonal argument wearing the costume of
+truth.
+
+## 5. Prove it
+
+The `Lang` framework is given. Prove (`make lab C=05-goedel/02-tarski`):
+
+- `tarski (L : Lang) : ¬ L.Definable L.True_`
+
+§4 is the walkthrough; §6 has hints.
+
+## 6. Hints for the skeleton
+
+*Nudge:* `intro hdef` (assume truth is definable). Use `L.neg_def` to get that `fun s => ¬ L.True_ s` is
+definable. Feed that to `L.diagonal` to obtain a sentence `s` with `hs : True_ s ↔ ¬ True_ s`. Finish with
+`no_self_neg ⟨_, hs⟩` (the existential witness is `True_ s` itself; Lean infers it from `hs`).
+
+## 7. Exercises (optional, for fluency)
+
+1. **Where is each hypothesis used?** Point to the exact line where `neg_def` and where `diagonal` are
+   used. What breaks if you drop `neg_def`?
+2. **Is the framework vacuous?** Could a `Lang` even exist? Describe a tiny model (sentences = `Bool`,
+   truth = "equals `true`"), and explain why making `Definable` the *two constant predicates* satisfies the
+   axioms while leaving `True_` undefinable — i.e. Tarski holds and isn't about nothing.
+3. **Truth vs. provability.** Tarski kills an *internal truth* predicate. Gödel (next slice) keeps an
+   internal *provability* predicate but assumes the theory is *sound*. Why is provability allowed to be
+   definable when truth isn't?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — the load-bearing hypotheses
+
+`neg_def` is used to turn "`True_` definable" into "`¬True_` definable" (`have hnd := L.neg_def _ hdef`);
+`diagonal` is used on that to manufacture the Liar (`obtain ⟨s, hs⟩ := L.diagonal _ hnd`). Drop `neg_def`
+and you can't get a *definable* negation to feed the diagonal lemma — the proof stalls, because the
+diagonal lemma only fires on definable predicates. (That's also why the theorem is non-trivial: definability
+must be closed under the operations you use.)
+
+### Exercise 2 — a model, so it's not vacuous
+
+Take `Sentence := Bool`, `True_ b := (b = true)`, `neg := not`. Let `Definable P` mean "`P` is one of the
+two constant predicates `fun _ => True` / `fun _ => False`." Then: `neg_true` holds (`!b` is true iff `b`
+isn't); `neg_def` holds (the negation of a constant is the other constant); and `diagonal` holds (for the
+`True` constant pick `s = true`, for `False` pick `s = false`). But `True_` — which is `true` on `true` and
+`false` on `false` — is *not* constant, so it isn't definable: `tarski` holds, concretely and
+non-vacuously. (Richer languages have far more definable predicates, but truth always escapes the list.)
+
+### Exercise 3 — why provability may be definable
+
+Truth, satisfying the T-schema `Tr(⌜φ⌝) ↔ φ` for *all* `φ`, immediately yields the Liar via
+self-reference. **Provability** satisfies only `Prov(⌜φ⌝) → φ`-style facts under the *extra* assumption of
+**soundness**, and only one direction at that: provable sentences are true, but not every true sentence is
+provable. That asymmetry is the escape hatch — provability *can* be an internal predicate, and the Gödel
+sentence "I am unprovable" is then *true but unprovable* rather than paradoxical. Undefinable truth (Tarski)
+and incomplete provability (Gödel) are the same diagonal pushed through two different predicates.
+
+## 9. Going further
+
+- **The hierarchy of metalanguages.** Tarski's positive lesson: define truth for a language `L` in a
+  *richer* metalanguage `L⁺`. Truth exists — just never inside the language it judges. This stratification
+  underlies model theory.
+- **Next: 5.3 — incompleteness.** Replace `True_`-as-definable with `Prov` plus *soundness*. The same Liar
+  construction yields not a contradiction but a **true sentence the theory cannot prove** — Gödel.

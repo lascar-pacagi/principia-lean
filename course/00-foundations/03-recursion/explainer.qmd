@@ -1,0 +1,228 @@
+---
+title: "03 — Inductive types and recursion: building (and reasoning about) your own data"
+---
+
+> **Where you are.** In `01-naturals` you built `MyNat` from two constructors and proved its laws; in
+> `02-propositions` you learned the connectives. Now we make the *type-building* and *recursion*
+> machinery itself the subject — because Course 1's prover is, at heart, a **recursive function over a
+> tree of formulas**, proved correct by **structural induction**. We'll build a tiny expression
+> language, evaluate it, transform it, and prove the transformation **preserves meaning** — a
+> miniature of the soundness theorem to come.
+
+## 1. The question
+
+A natural number is simple — a single chain `succ (succ … zero)`. But the data we actually compute with
+*branches*: an arithmetic expression like `2 + (3 + 4)` is a little **tree**. How do we (a) describe
+such trees as a type, (b) write functions that walk them, and (c) prove statements about *all* such
+trees? The answers — `inductive`, structural recursion, and structural induction — are the same trio
+from `MyNat`, now in full generality.
+
+## 2. The idea: `inductive` builds types; recursion and induction come free
+
+`inductive` lets you mint a new type by listing its **constructors** — the exhaustive ways to build a
+value. That one declaration is remarkably powerful; it covers:
+
+- **Enumerations** — finitely many constant constructors:
+  ```lean
+  inductive Direction where | north | south | east | west
+  ```
+- **Parameterized containers** — constructors that carry data, possibly of a type parameter:
+  ```lean
+  inductive Option (α : Type) where | none | some (a : α)
+  ```
+- **Recursive types** — constructors that take *the type being defined* as an argument. `MyNat` was
+  one (`succ : MyNat → MyNat`). When a constructor takes **two or more** recursive arguments, the values
+  branch into **trees** — which is exactly what we want now.
+
+And, as with `MyNat`, declaring the type automatically gives you two matched powers:
+
+- **Recursion** to *define* functions: say what the function does on each constructor (you may reuse its
+  value on the constructor's recursive arguments).
+- **Induction** to *prove* statements: prove it for each constructor (you may assume it for the
+  recursive arguments — those assumptions are the **induction hypotheses**).
+
+A branching constructor like `plus a b` gives a recursive definition *two* sub-results to combine, and
+an induction proof *two* hypotheses to use. That doubling is the only genuinely new thing in this lesson.
+
+## 3. In Lean
+
+### 3.1 Declaring the expression type
+
+```lean
+inductive Expr where
+  | const : Nat → Expr           -- a literal number
+  | plus  : Expr → Expr → Expr   -- the sum of two sub-expressions (branches!)
+deriving Repr, DecidableEq
+```
+
+`const` carries a `Nat`; `plus` carries *two* `Expr`s — so an `Expr` is a binary tree with numbers at
+the leaves. `2 + (3 + 4)` is `plus (const 2) (plus (const 3) (const 4))`. (`deriving Repr, DecidableEq`
+just auto-generates a printer and an equality test so we can `#eval` and `#guard` concrete expressions.)
+
+### 3.2 Functions by structural recursion
+
+To define a function on `Expr`, give a case per constructor — and on `plus` you may call the function on
+the sub-expressions, because they are *structurally smaller*, which guarantees termination:
+
+```lean
+def eval : Expr → Nat
+  | const n  => n
+  | plus a b => eval a + eval b      -- recurse on both children, then add
+
+def swap : Expr → Expr
+  | const n  => const n
+  | plus a b => plus (swap b) (swap a)   -- mirror: recurse, and flip the operands
+
+def size : Expr → Nat
+  | const _  => 1
+  | plus a b => 1 + size a + size b      -- count all constructors
+```
+
+Lean accepts these because each recursive call is on a *sub-term* (`a` or `b`) of the input — the input
+strictly shrinks, so the recursion can't run forever. (Functions that *don't* shrink structurally need
+*well-founded recursion* with an explicit measure; we won't need that here. `_` in `size`'s first line
+is a wildcard — "some `Nat`, don't care which.")
+
+### 3.3 The defining equations compute
+
+Just like `MyNat`'s `add`, each line of a definition is a computation rule. `eval (plus a b)` *is*
+`eval a + eval b`, etc. — so concrete evaluations reduce by `rfl`, and in proofs we unfold a definition
+with `simp only [eval]` (which uses the function's auto-generated equation lemmas).
+
+```lean
+example : eval (plus (const 2) (const 3)) = 5 := rfl   -- the kernel just computes
+```
+
+### 3.4 Structural induction with two hypotheses — walk through `swap_swap`
+
+Claim: swapping twice is the identity, `swap (swap e) = e`. Induct on `e`:
+
+```lean
+theorem swap_swap (e : Expr) : swap (swap e) = e := by
+  induction e with
+  | const n          => rfl
+  | plus a b iha ihb => simp only [swap, iha, ihb]
+```
+
+- **`const n` case** — `swap (swap (const n))` computes to `const n`: `rfl`.
+- **`plus a b iha ihb` case** — here's the new part. Because `plus` has two recursive children, the
+  induction tactic hands you **two** hypotheses:
+  - `iha : swap (swap a) = a`
+  - `ihb : swap (swap b) = b`
+
+  The goal is `swap (swap (plus a b)) = plus a b`. Now `simp only [swap, iha, ihb]` does the work in one
+  step: it **unfolds `swap`** (twice — once for the inner `swap (plus a b) = plus (swap b) (swap a)`, once
+  for the outer), turning the left side into `plus (swap (swap a)) (swap (swap b))`, and then **rewrites
+  with the two induction hypotheses** `iha`, `ihb` to collapse it to `plus a b`. Goal closed.
+
+`simp only [f, …]` is the everyday idiom for these proofs: *give it the function definitions to unfold
+and the hypotheses to apply, and let it grind.* (It's `rw` on autopilot, repeated until nothing changes.)
+
+### 3.5 When arithmetic is left over: `omega`
+
+Sometimes unfolding leaves a purely numeric goal. In `size_swap`, after `simp only [swap, size, iha,
+ihb]` the goal becomes `1 + size b + size a = 1 + size a + size b` — true, but only by commutativity of
+`+`. Rather than fiddle with `rw [Nat.add_comm]`, reach for **`omega`**, Lean's decision procedure for
+linear arithmetic over integers and naturals. It treats `size a`, `size b` as unknowns and closes the
+goal instantly:
+
+```lean
+theorem size_swap (e : Expr) : size (swap e) = size e := by
+  induction e with
+  | const n          => rfl
+  | plus a b iha ihb => simp only [swap, size, iha, ihb]; omega
+```
+
+(`a; b` runs tactic `b` after `a`.) `omega` is your friend whenever a goal is "obvious arithmetic."
+
+> **A note on axioms.** `simp` and `omega` are powerful because they're built on Lean's accepted axioms,
+> so `#print axioms swap_swap` will now list `propext` (and `Quot.sound`) rather than "no axioms." That
+> is completely fine — those are three axioms the whole community trusts. The honesty audit forbids only
+> `sorryAx`, the fingerprint of a `sorry`. Power tactics are not cheating; skipped proofs are.
+
+## 4. Why this is a dress rehearsal for Course 1
+
+Look again at `eval_swap : eval (swap e) = eval e`. It says: *a syntactic transformation of an
+expression does not change what the expression means.* That is **exactly** the shape of a **soundness**
+theorem — "this operation on syntax respects the semantics" — and proving it is exactly the method
+you'll use on a real proof system: define syntax as an inductive type, define meaning by recursion, and
+connect them by structural induction. Course 1 replaces `Expr` with *logical formulas*, `eval` with
+*truth under a valuation*, and `swap` with *the rules of natural deduction* — but the moves are the ones
+you're learning right here.
+
+## 5. Prove it
+
+The type and the three functions are given. Prove the three theorems (each is an `induction e`). Check:
+
+```bash
+make lab C=00-foundations/03-recursion
+```
+
+1. `swap_swap (e) : swap (swap e) = e`
+2. `eval_swap (e) : eval (swap e) = eval e`
+3. `size_swap (e) : size (swap e) = size e`
+
+§3.4 walks #1 in full; #2 and #3 adapt the same pattern. Try cold; §6 has graduated hints.
+
+## 6. Hints for the skeleton
+
+All three have the same skeleton: `induction e with | const n => ?_ | plus a b iha ihb => ?_`. The
+`const` case is always `rfl`. The work is the `plus` case.
+
+**1 `swap_swap`.** *Nudge:* unfold `swap` and use both induction hypotheses. *More:* the `plus` case is
+`simp only [swap, iha, ihb]` (no arithmetic needed — it's a pure rearrangement).
+
+**2 `eval_swap`.** *Nudge:* unfold both `swap` and `eval`, apply the hypotheses; you'll be left with a
+commutativity-of-`+` goal. *More:* `simp only [swap, eval, iha, ihb]` then `omega`.
+
+**3 `size_swap`.** *Nudge:* same shape as #2, unfolding `size` instead of `eval`. *More:*
+`simp only [swap, size, iha, ihb]` then `omega`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Reuse a theorem.** Prove `eval (swap (swap e)) = eval e` in *one line*, without induction. *Hint:*
+   you already proved `swap_swap` — a theorem is a rewrite rule like any other.
+2. **Define your own recursive function, then prove a fact about it.** Define `numLeaves : Expr → Nat`
+   counting the `const` leaves (`const _ => 1`, `plus a b => numLeaves a + numLeaves b`), and prove
+   `numLeaves (swap e) = numLeaves e`. *Hint:* the proof is the §3.4 pattern.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — reuse `swap_swap`
+
+```lean
+theorem eval_swap_swap (e : Expr) : eval (swap (swap e)) = eval e := by
+  rw [swap_swap]
+```
+
+No induction needed: `swap_swap` says `swap (swap e) = e`, and `rw` uses it as a rewrite, turning the
+goal into `eval e = eval e`, which `rw` closes automatically. The lesson: **every theorem you prove
+becomes a tool** — a named rewrite you can deploy later. (You could also write `simp [swap_swap]`.)
+
+### Exercise 2 — define and prove
+
+```lean
+def numLeaves : Expr → Nat
+  | const _  => 1
+  | plus a b => numLeaves a + numLeaves b
+
+theorem leaves_swap (e : Expr) : numLeaves (swap e) = numLeaves e := by
+  induction e with
+  | const n          => rfl
+  | plus a b iha ihb => simp only [swap, numLeaves, iha, ihb]; omega
+```
+
+Defining `numLeaves` is the same recursion shape as `size` — a case per constructor, combining the
+children's results on `plus`. The proof is identical to `size_swap`: unfold `swap` and `numLeaves`,
+apply the two hypotheses, and let `omega` mop up the `+`-commutativity. Once you can *define* functions
+on a type and *prove* by induction over it, you can handle any tree-shaped data — including the formulas
+of Course 1.
+
+## 9. Going further
+
+- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, chapters *Inductive Types*
+  and *Induction and Recursion*: the full story, including the auto-generated recursor and
+  pattern-matching compilation.
+- **Natural Number Game** — its *Multiplication* / *Power* worlds are more structural-recursion practice.
+- **Next:** Course 0.4 — natural deduction *on paper* lined up against Lean, and the
+  constructive-vs-classical boundary — the last foundations stop before Course 1 builds the prover.

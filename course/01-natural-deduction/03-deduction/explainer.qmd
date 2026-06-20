@@ -1,0 +1,179 @@
+---
+title: "1.3 — Natural deduction: proofs as trees"
+---
+
+> **Where you are.** Slice 1.2 gave formulas *meaning* (`⊨`). This slice gives them *proofs* (`⊢`). We
+> turn `04-logic`'s inference rules into the **constructors of an inductive type** `Deriv`, so a proof
+> stops being something you *do* and becomes something you *build* — a tree of rule applications, a
+> value Lean can check and (next slices) compute with. Code graduates into `Principia.NatDed.Basic`.
+
+## 1. The question
+
+In `04-logic` you saw natural deduction as a fixed list of inference rules (`∧I`, `→E`, …) and a proof
+as a *tree* stacking them. We took that picture literally there. Now we make it *data*: a type
+`Γ ⊢ φ` whose values are exactly those trees. Why? Because then "find a proof" becomes "construct a
+value of this type" — a programming task — which is what the prover (slice 1.5) will automate, and what
+soundness (slice 1.4) will analyse by induction.
+
+## 2. The rules become constructors
+
+```lean
+inductive Deriv : List Form → Form → Type where
+  | ax    {Γ a}     : a ∈ Γ → Deriv Γ a                                   -- assumption
+  | impI  {Γ a b}   : Deriv (a :: Γ) b → Deriv Γ (a ⇒ b)                  -- →I
+  | impE  {Γ a b}   : Deriv Γ (a ⇒ b) → Deriv Γ a → Deriv Γ b            -- →E (modus ponens)
+  | andI  {Γ a b}   : Deriv Γ a → Deriv Γ b → Deriv Γ (a ⋏ b)            -- ∧I
+  | andE₁ {Γ a b}   : Deriv Γ (a ⋏ b) → Deriv Γ a                         -- ∧E (left)
+  | andE₂ {Γ a b}   : Deriv Γ (a ⋏ b) → Deriv Γ b                         -- ∧E (right)
+  | orI₁  {Γ a b}   : Deriv Γ a → Deriv Γ (a ⋎ b)                         -- ∨I (left)
+  | orI₂  {Γ a b}   : Deriv Γ b → Deriv Γ (a ⋎ b)                         -- ∨I (right)
+  | orE   {Γ a b c} : Deriv Γ (a ⋎ b) → Deriv (a::Γ) c → Deriv (b::Γ) c → Deriv Γ c  -- ∨E
+  | flsE  {Γ a}     : Deriv Γ Form.fls → Deriv Γ a                        -- ⊥E (ex falso)
+  | raa   {Γ a}     : Deriv (Form.neg a :: Γ) Form.fls → Deriv Γ a        -- classical reductio
+```
+
+We write `Γ ⊢ φ` for `Deriv Γ φ`. Compare line by line with the table in `04-logic §2` — each
+constructor *is* a rule:
+
+- `ax` is the **assumption** leaf: if `a ∈ Γ`, you have a proof of `a`.
+- `impI` is **→-introduction**: a proof of `b` in the *extended* context `a :: Γ` (i.e. assuming `a`)
+  becomes a proof of `a ⇒ b`. Discharging an assumption = removing it from the context.
+- `impE` is **modus ponens**; `andI`/`andE₁`/`andE₂`, `orI₁`/`orI₂`/`orE` are the intro/elim pairs for
+  `∧` and `∨`; `flsE` is ex falso.
+- `raa` is the one **classical** rule (reductio ad absurdum): a derivation of `⊥` from `∼a` yields `a`.
+  This single addition is what makes Peirce's law and excluded middle provable (just as `Classical`
+  did in `04-logic`).
+
+Note what's *absent*: no rules for `¬`, `⊤`, `↔`. They're *derived* connectives (`∼a = a ⇒ ⊥`, …), so
+their proof rules come for free from `⇒`/`⊥`/`∧`. The context `Γ` is a `List Form`, and it *changes*
+across the tree (`impI`, `orE`, `raa` extend it) — which is why `Deriv` is *indexed* by `Γ`.
+
+## 3. Building a derivation, and the assumption trick
+
+A proof of `φ ⇒ φ`: assume `φ` (`impI`), then the goal `φ` is the assumption (`ax`):
+
+```lean
+def dId (φ : Form) : [] ⊢ (φ ⇒ φ) :=
+  .impI (.ax (a := φ) (by simp))
+```
+
+Two things to internalise:
+
+- **`.ax (a := φ) (by simp)`.** The `ax` rule needs a proof that `φ ∈ Γ`. Here `Γ = [φ]`, and `by simp`
+  discharges `φ ∈ [φ]` automatically. The `(a := φ)` says *which* formula this assumption is.
+- **Why name `a`?** When the formula is forced by the surrounding goal you could drop it — but the moment
+  an **elimination** rule is involved you *must* name it, and here's the reason. `andE₂ h : Deriv Γ b`
+  throws away the *left* half `a` of `h : Deriv Γ (a ⋏ b)`. From the goal (`b`) Lean learns `b`, but `a`
+  is a free metavariable — and then `by simp` is asked to prove `(? ⋏ b) ∈ Γ` with a *hole* in it, and
+  gets stuck. Naming the assumption's full formula fills the hole. The rule of thumb: **whenever you
+  `ax`, write its formula `(a := …)`.** (This very friction is what slice 1.5's prover removes.)
+
+So `dAndComm` (swap a conjunction) names the conjunction it takes apart:
+
+```lean
+def dAndComm (φ ψ : Form) : [] ⊢ ((φ ⋏ ψ) ⇒ (ψ ⋏ φ)) :=
+  .impI (.andI (.andE₂ (.ax (a := φ ⋏ ψ) (by simp)))    -- right half: ψ
+               (.andE₁ (.ax (a := φ ⋏ ψ) (by simp))))   -- left half:  φ
+```
+
+And `dMP` must name the middle formula of the modus-ponens step (`impE`'s `a`), for the same reason:
+
+```lean
+def dMP (φ ψ : Form) : [] ⊢ (φ ⇒ (φ ⇒ ψ) ⇒ ψ) :=
+  .impI (.impI (.impE (a := φ) (.ax (a := φ ⇒ ψ) (by simp)) (.ax (a := φ) (by simp))))
+```
+
+## 4. The classical showcase: Peirce's law
+
+`((φ ⇒ ψ) ⇒ φ) ⇒ φ` is valid but *not* intuitionistic — it needs `raa`. The strategy: assume the
+hypothesis `h : (φ⇒ψ)⇒φ`; to prove `φ`, suppose for contradiction `∼φ` and derive `⊥`. We get `φ` by
+feeding `h` a proof of `φ ⇒ ψ` — which is free, because under `∼φ` any `φ` gives `⊥` and hence (ex
+falso) any `ψ`. Then `∼φ` applied to that `φ` is the `⊥` we wanted.
+
+```lean
+def peirce (φ ψ : Form) : [] ⊢ (((φ ⇒ ψ) ⇒ φ) ⇒ φ) :=
+  .impI <| .raa <|
+    .impE (a := φ) (.ax (a := ∼φ) (by simp))                         -- ∼φ applied to φ … gives ⊥
+      (.impE (a := φ ⇒ ψ) (.ax (a := (φ ⇒ ψ) ⇒ φ) (by simp))         -- h applied to (φ⇒ψ) … gives φ
+        (.impI (.flsE (.impE (a := φ) (.ax (a := ∼φ) (by simp))      -- φ⇒ψ: assume φ, get ⊥ from ∼φ,
+                                       (.ax (a := φ) (by simp))))))   --   then ex falso to ψ
+```
+
+It type-checks — so it is a genuine, kernel-verified proof tree. It is also *miserable* to write by
+hand: every `ax` named, every elimination's hidden formula pinned, the context tracked in your head.
+**That misery is the point of slice 1.5:** a prover will search for these trees so you don't have to.
+
+## 5. Prove it
+
+The `Deriv` type is given. Build the four derivations (`make lab C=01-natural-deduction/03-deduction`):
+
+1. `dId (φ) : [] ⊢ (φ ⇒ φ)`
+2. `dAndComm (φ ψ) : [] ⊢ ((φ ⋏ ψ) ⇒ (ψ ⋏ φ))`
+3. `dMP (φ ψ) : [] ⊢ (φ ⇒ (φ ⇒ ψ) ⇒ ψ)`
+4. `peirce (φ ψ) : [] ⊢ (((φ ⇒ ψ) ⇒ φ) ⇒ φ)`  — the classical one
+
+§3–§4 build #1, #2, #3, and #4 in full; try to reconstruct them before peeking, and lean on §6.
+
+## 6. Hints for the skeleton
+
+Universal tactic: write assumptions as `Deriv.ax (a := <formula>) (by simp)`.
+
+**1 `dId`.** *Nudge:* one `impI`, then the assumption. *More:* `.impI (.ax (a := φ) (by simp))`.
+
+**2 `dAndComm`.** *Nudge:* `impI`, then `andI` of the two halves, each obtained by `andE₂`/`andE₁` from the
+assumed conjunction. *More:* name the conjunction `(a := φ ⋏ ψ)` in both `ax`es (it's an elimination —
+the discarded half is otherwise an unknown).
+
+**3 `dMP`.** *Nudge:* two `impI`s, then `impE`. *More:* name the middle formula: `.impE (a := φ) …`; the
+two `ax`es are `(a := φ ⇒ ψ)` and `(a := φ)`.
+
+**4 `peirce`.** *Nudge:* `impI`, then `raa`; inside, you're proving `⊥` from context `[∼φ, (φ⇒ψ)⇒φ]`.
+Apply `∼φ` (= `φ ⇒ ⊥`) to a proof of `φ`; get that `φ` by applying `(φ⇒ψ)⇒φ` to a `φ ⇒ ψ`; build `φ ⇒ ψ`
+by `impI` + `flsE` (under `φ` and `∼φ`, you have `⊥`). *More:* copy the four-`impE` skeleton from §4.
+
+## 7. Exercises (optional, for fluency)
+
+1. `dOrComm (φ ψ) : [] ⊢ ((φ ⋎ ψ) ⇒ (ψ ⋎ φ))`. *Hint:* `impI`, then `orE` on the assumed disjunction —
+   it gives you two cases; in each, re-inject with `orI₁`/`orI₂` onto the *other* side.
+2. `dEM (φ) : [] ⊢ (φ ⋎ ∼φ)`. *Hint:* classical — `raa` on `∼(φ ⋎ ∼φ)`. Build `φ ⋎ ∼φ` twice: once via
+   `orI₂` with a `∼φ` derived by `impI` (assume `φ`, inject `orI₁`, hit the negated disjunction), and feed
+   it to the assumption.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — `dOrComm`
+
+```lean
+def dOrComm (φ ψ : Form) : [] ⊢ ((φ ⋎ ψ) ⇒ (ψ ⋎ φ)) :=
+  .impI (.orE (.ax (a := φ ⋎ ψ) (by simp))
+    (.orI₂ (.ax (a := φ) (by simp)))     -- left case: have φ, put it on the right of ψ ⋎ φ
+    (.orI₁ (.ax (a := ψ) (by simp))))    -- right case: have ψ, put it on the left
+```
+
+`orE` is the ∨-elimination "case split": given `φ ⋎ ψ`, prove the goal `ψ ⋎ φ` *in each case*. In the
+`φ` case the assumption is `φ`, which belongs on the *right* of `ψ ⋎ φ` (`orI₂`); in the `ψ` case, on the
+*left* (`orI₁`). The goal pins `orE`'s `c = ψ ⋎ φ`, and the assumed `φ ⋎ ψ` pins `a, b` — so here the only
+`ax` that needs naming is the disjunction itself.
+
+### Exercise 2 — `dEM`
+
+```lean
+def dEM (φ : Form) : [] ⊢ (φ ⋎ ∼φ) :=
+  .raa <| .impE (a := φ ⋎ ∼φ) (.ax (a := ∼(φ ⋎ ∼φ)) (by simp))
+    (.orI₂ (.impI (.impE (a := φ ⋎ ∼φ) (.ax (a := ∼(φ ⋎ ∼φ)) (by simp))
+      (.orI₁ (.ax (a := φ) (by simp))))))
+```
+
+Classically `φ ⋎ ∼φ` is obvious, but constructing it takes a clever turn (the same trick as deriving EM
+from double negation in `04-logic`). Assume `∼(φ ⋎ ∼φ)` (`raa`). To reach `⊥`, apply it to a proof of
+`φ ⋎ ∼φ`. Build that proof via `orI₂` with `∼φ`, where `∼φ = φ ⇒ ⊥` is itself derived by `impI`: assuming
+`φ`, inject it left (`orI₁`) to get `φ ⋎ ∼φ`, and applying the *same* negated assumption gives `⊥`. The
+self-reference (using `∼(φ⋎∼φ)` twice) is exactly what makes EM classical, not constructive.
+
+## 9. Going further
+
+- **Logic and Proof** — `../../references/logic_and_proof`: natural deduction with many worked proof
+  trees on paper; reading a few makes the `Deriv` constructors feel inevitable.
+- **Next: slice 1.4 — soundness** (Milestone **M1**). We prove `Γ ⊢ φ → Γ ⊨ φ` by induction on the
+  derivation tree: every rule preserves truth, so anything provable is valid. The kernel will certify
+  that our rules don't lie.

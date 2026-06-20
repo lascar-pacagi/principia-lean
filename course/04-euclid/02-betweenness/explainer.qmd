@@ -1,0 +1,153 @@
+---
+title: "4.2 — Betweenness, SAS without angles, and segment addition"
+---
+
+> **Where you are.** Slice 4.1 had only segment *congruence* — enough for I.1, not enough to compare
+> triangles. Here we add Tarski's second primitive, **betweenness**, and the **five-segment axiom** — the
+> single most elegant idea in this corner of geometry: it captures Euclid's **side-angle-side** (Prop I.4)
+> *without any notion of angle*. From it we prove the algebraic backbone of length: **segment addition**.
+> Code graduates into `Principia.Euclid.Betweenness`.
+
+## 1. The question
+
+Euclid's Proposition I.4 is **SAS**: if two triangles agree on two sides and the *included angle*, they're
+congruent. It's the workhorse behind most of Book I. But our formal language has points and one relation,
+`Cong` — *no angles*. How can we even state SAS, let alone prove things with it?
+
+Tarski's answer reshaped the foundations of geometry: don't measure the angle — **pin it with a fourth
+point.** That is the five-segment axiom, and once we have it, the basic arithmetic of segments (adding
+congruent lengths) follows.
+
+## 2. Betweenness, and two more postulates
+
+We add `Betw a b c` — "`b` lies between `a` and `c`" — and two postulates, packaged (as in 4.1) as
+*fields of a class*, so nothing rests on a Lean `axiom`:
+
+```lean
+class EuclidPlane2 (Point : Type) extends EuclidPlane Point where
+  Betw : Point → Point → Point → Prop
+  betw_identity : ∀ {a b}, Betw a b a → a = b                          -- nothing lies strictly past itself
+  segment_construction : ∀ a b c d, ∃ e, Betw a b e ∧ Cong b e c d     -- extend a ray by a copy of cd
+  five_segment : ∀ {a b c d a' b' c' d'},                              -- ⟵ SAS, angle-free (next §)
+    Betw a b c → Betw a' b' c' → Cong a b a' b' → Cong b c b' c' →
+    Cong a d a' d' → Cong b d b' d' → Cong c d c' d'
+```
+
+`segment_construction` is Euclid's "a segment can be laid off along a line" made precise: from `b`, in the
+direction away from `a`, you can mark a point `e` so that `be` copies any given `cd`.
+
+## 3. The five-segment axiom *is* SAS
+
+Picture two configurations, each a base `a–b–c` on a line with a fourth point `d` off to the side:
+
+![If the **solid** segments match between the two copies — `ab`, `bc` (base) and `ad`, `bd` (to the fourth point) — then the **red dashed** one is forced: `cd ≅ c′d′`. No angle is ever named.](fig-5seg.svg){width=88%}
+
+Read it as SAS. Think of triangle `a b d` and its copy `a′ b′ d′`: the hypotheses `Cong a b a' b'`,
+`Cong a d a' d'`, `Cong b d b' d'` say *all three sides* of those triangles match — so the triangles are
+congruent, and in particular the "angle at `b`" is the same in both. The points `c`, `c′` extend the base
+past `b` by equal amounts (`Betw a b c`, `Cong b c b' c'`). The axiom concludes `Cong c d c' d'`: the
+distance from the far base-point to the apex is determined. **That determination is exactly the rigidity
+SAS gives — the included angle at `b` is encoded by the triangle `abd`, never measured.** Replacing "equal
+angle" with "a congruent fourth point" is Tarski's masterstroke: it keeps geometry first-order and
+angle-free.
+
+## 4. Two free facts, then segment addition
+
+Before the payoff, two small but essential lemmas — both squeezed out of `segment_construction` and
+`cong_identity` by the same trick (build a degenerate copy, then collapse it):
+
+- **`cong_null : Cong a a b b`** — any two *null* segments are congruent. (Construct `e` with
+  `Cong a e b b`; `cong_identity` forces `a = e`, leaving `Cong a a b b`.)
+- **`betw_trivial : Betw a b b`** — `b` is between `a` and itself. (Extend `ab` by the null segment `bb`;
+  the new point must *be* `b`.)
+
+Now the headline. **Segment addition** — congruent pieces, laid end to end, make congruent wholes:
+
+```lean
+theorem segment_add (hbc : Betw a b c) (hbc' : Betw a' b' c')
+    (h1 : Cong a b a' b') (h2 : Cong b c b' c') : Cong a c a' c'
+```
+
+```
+   a ───────── b ─────────── c          ab ≅ a′b′  and  bc ≅ b′c′
+   a′ ──────── b′ ────────── c′    ⟹    therefore   ac ≅ a′c′
+```
+
+This is Tarski's **l2_11**. The proof is a one-line miracle of the five-segment axiom: apply it with the
+*fourth point taken to be `a` itself*. Then `Cong a d a' d'` becomes `Cong a a a' a'` (that's `cong_null`),
+`Cong b d b' d'` becomes `Cong b a b' a'` (just `h1` reversed), and the conclusion `Cong c d c' d'` becomes
+`Cong c a c' a'` — which is `Cong a c a' c'` read backwards. Length adds, and we never left the axioms.
+
+## 5. Prove it
+
+`EuclidPlane2` is given (and 4.1's congruence lemmas are imported). Prove
+(`make lab C=04-euclid/02-betweenness`):
+
+1. `cong_null a b : Cong a a b b`
+2. `betw_trivial a b : Betw a b b`
+3. `segment_add : Betw a b c → Betw a' b' c' → Cong a b a' b' → Cong b c b' c' → Cong a c a' c'`
+
+§4 walks all three; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `cong_null`.** *Nudge:* `obtain ⟨e, _, he⟩ := segment_construction a a b b` gives `he : Cong a e b b`;
+`cong_identity he : a = e`; `subst` and you're left with `he : Cong a a b b`.
+
+**2 `betw_trivial`.** *Nudge:* same shape with `segment_construction a b b b` — keep the betweenness part
+`hbe : Betw a b e`, use `cong_identity` on the congruence part to get `b = e`, `subst`, return `hbe`.
+
+**3 `segment_add`.** *Nudge:* first build `hba : Cong b a b' a'` from `h1` (two `cong_pseudo_refl`s and a
+`cong_trans'`). Then `five_segment hbc hbc' h1 h2 (cong_null a a') hba : Cong c a c' a'`. Finally flip both
+ends with `cong_pseudo_refl`/`cong_trans'` to get `Cong a c a' c'`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Why `a` as the fourth point?** In `segment_add` we instantiated the five-segment axiom's `d`, `d'`
+   with `a`, `a'`. What do the two "to the fourth point" hypotheses (`ad`, `bd`) become, and why is each
+   then trivially available?
+2. **No angles, really?** State Euclid's I.4 in words, then point to where each piece (the two sides, the
+   included angle, the conclusion) lives in `five_segment`. Which piece became "a fourth point"?
+3. **What's still missing for full I.4 / I.5?** `segment_add` is congruence *arithmetic*. The general
+   triangle-congruence form of I.4, and I.5 (*pons asinorum*), need more. Name one thing our axioms can't
+   yet do that those proofs require.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — taking the fourth point to be `a`
+
+With `d := a`, `d' := a'`: the hypothesis `Cong a d a' d'` is `Cong a a a' a'` — two null segments, which
+is exactly `cong_null a a'`; and `Cong b d b' d'` is `Cong b a b' a'`, which is just `h1 : Cong a b a' b'`
+with both endpoints reversed (`cong_pseudo_refl` twice through `cong_trans'`). So *both* extra hypotheses
+come for free, and five-segment collapses precisely to "the wholes are congruent." Choosing `d = a` makes
+the apex degenerate — the SAS rigidity reduces to one-dimensional length addition.
+
+### Exercise 2 — where I.4's pieces live
+
+I.4: *"two triangles with two sides and the included angle equal are congruent."* In `five_segment`, take
+triangles `abd` and `a'b'd'`: the **two sides** are `Cong a b a' b'` and `Cong b d b' d'`; the **included
+angle** at `b` is encoded by the *third* side `Cong a d a' d'` (fixing triangle `abd` up to congruence
+pins that angle); the **conclusion** — congruence extends to the rest of the figure — is `Cong c d c' d'`
+as `c` ranges along the base. The "equal angle" became the fourth point `d` with its two distances.
+
+### Exercise 3 — the gap to I.4-general and I.5
+
+Several honest answers. Our axioms can't yet **reflect a point across a line** or invoke **Pasch's axiom**
+(how a line crossing one side of a triangle must cross another) — both are needed to move from the
+collinear five-segment statement to *arbitrary* triangles, and to define **angle congruence** at all (I.5
+compares the two base *angles*). Building those is exactly the long road GeoCoq travels; we stop at the
+foundational congruence facts and flag the rest, rather than over-claim.
+
+## 9. Going further
+
+- **The road to I.4 / I.5.** Add Pasch + point reflection, *define* `Cong`-of-angles via congruent
+  triangles, and the general SAS and *pons asinorum* follow (Pappus's slick I.5: compare triangle `abc`
+  with its mirror `acb` by SAS). This is the heart of a formal Tarski/GeoCoq development.
+- **Continuity, again.** Slice 4.1's `circles_meet` and this slice's `five_segment`/`segment_construction`
+  are independent strands (continuity vs. congruence-rigidity); the full system weaves both plus
+  dimension axioms.
+- **Course 4 wrap.** We built honest synthetic geometry from scratch: I.1 with its continuity gap exposed
+  (4.1), and SAS-without-angles with segment arithmetic (4.2) — all parametric over models, all
+  axiom-clean.
+- **Next: Course 5 — Gödel's incompleteness** — the diagonal lemma, Tarski's undefinability of truth, and
+  the abstract first incompleteness theorem.

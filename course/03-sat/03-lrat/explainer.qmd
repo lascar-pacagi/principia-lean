@@ -1,0 +1,150 @@
+---
+title: "3.6 — A verified UNSAT-certificate checker (the keystone)"
+---
+
+> **Where you are.** Slice 3.2 gave a SAT solver whose *yes* (a model) is trustworthy, but whose *no* is
+> not. This slice fixes the *no* the way the real world does: don't trust the solver — have it emit a
+> **certificate** of unsatisfiability and check that with a small **verified** checker. The theorem
+> `check_unsat : check cnf proof = true → cnf.Unsat` is the keystone of Course 3, and the heart of how
+> verified SAT actually works (Lean's own `bv_decide` ships exactly such a checker). Code graduates into
+> `Principia.Sat.Lrat`.
+
+## 1. The question
+
+A modern SAT solver is tens of thousands of lines of heavily-optimised C — far too much to verify. Yet we
+want to *trust* its "UNSAT". The resolution: when a solver decides UNSAT, it can emit a **proof** (a
+DRAT/LRAT file). We then run a tiny checker that re-validates the proof from scratch. Trust shrinks to the
+*checker plus the Lean kernel*; the solver is untrusted. That's a verified pipeline you can actually build.
+
+## 2. The certificate
+
+A certificate is a flat list of proof lines — the core of the **LRAT** format. Each line introduces a new
+clause, justified by *hints*: which earlier clauses to combine, and on which literal. We use single
+resolution steps:
+
+```lean
+structure Step where
+  c   : Clause     -- the new clause being added
+  i   : Nat        -- index of the first parent (in the current database)
+  j   : Nat        -- index of the second parent
+  lit : Lit        -- the literal to resolve on
+```
+
+(Real LRAT hints encode *reverse-unit-propagation* chains rather than one resolution; the checker and its
+soundness have the same shape — chains just resolve several clauses in sequence.)
+
+## 3. The checker
+
+The database starts as the input clauses (indices `0, 1, …`). Each accepted line appends its clause (so
+the next index is available as a hint). `checkStep` validates a line by *recomputing* the resolvent and
+comparing — no search:
+
+```lean
+def checkStep db s := match db[s.i]?, db[s.j]? with
+  | some ci, some cj => decide (resolvent ci cj s.lit = s.c)
+  | _, _ => false
+def runProof : List Clause → List Step → Option (List Clause)
+  | db, [] => some db
+  | db, s :: rest => if checkStep db s then runProof (db ++ [s.c]) rest else none
+def check cnf proof := match runProof cnf proof with
+  | some db => decide (([] : Clause) ∈ db)        -- was `□` derived?
+  | none => false
+```
+
+```lean
+def egProof := [ {c := [⟨1,true⟩], i := 0, j := 1, lit := ⟨0,true⟩},   -- (p∨q)·(¬p) ⊢ q
+                 {c := [],         i := 3, j := 2, lit := ⟨1,true⟩} ]   -- q·(¬q) ⊢ □
+#guard check [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]] egProof == true
+```
+
+## 4. Why acceptance means UNSAT
+
+The keystone:
+
+```lean
+theorem check_unsat {cnf proof} (h : check cnf proof = true) : cnf.Unsat
+```
+
+The argument is a single invariant: **every clause in the database is entailed by `cnf`**
+(`Entailed cnf c := ∀ v, Cnf.eval v cnf = true → Clause.eval v c = true`).
+
+- *Initially* the database is `cnf` itself, and every clause of `cnf` is trivially entailed by `cnf`.
+- *Each step* adds `c = resolvent ci cj lit` where `ci`, `cj` are already in the database, hence entailed;
+  Course 2's `resolvent_sound` says the resolvent holds wherever both parents do, so `c` is entailed too.
+  That's `runProof_preserves`.
+- *At the end*, `□ ∈ db`, so `□` is entailed by `cnf`. But `Clause.eval v □ = false` for every `v`. So no
+  `v` can satisfy `cnf` — `cnf.Unsat`.
+
+Notice the checker never trusts *how* the solver found the proof; it only re-checks each resolution step
+and tracks entailment. The whole guarantee rests on `resolvent_sound` from Course 2 — soundness of one
+inference step, scaled to a whole certificate.
+
+## 5. Prove it
+
+The checker is given. Prove (`make lab C=03-sat/03-lrat`):
+
+1. `runProof_preserves proof db db' : (∀ c ∈ db, Entailed cnf c) → runProof db proof = some db' →
+   (∀ c ∈ db', Entailed cnf c)`
+2. `check_unsat {cnf proof} : check cnf proof = true → cnf.Unsat`
+
+§4 is the walkthrough. Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `runProof_preserves`.** *Nudge:* `intro proof; induction proof`. `nil`: `runProof db [] = some db`,
+so `injection`/`subst` and reuse the hypothesis. `cons s rest ih`: `simp only [runProof] at h; split at h`
+on `checkStep`; in the accepted branch, `refine ih … h` and show the *appended* clause is entailed — its
+membership splits (`List.mem_append`) into "already in `db`" (use the hypothesis) or "`= s.c`"; for the
+latter, unfold `checkStep`, `split` on the index lookups, and apply `resolvent_sound` to the two parents
+(entailed by the hypothesis, via `List.mem_of_getElem?`). The rejected branches are `absurd … (by simp)`.
+
+**2 `check_unsat`.** *Nudge:* `simp only [check] at h; split at h`. In the `some db` case, `□ ∈ db`
+(`of_decide_eq_true`) and `runProof_preserves` (seeded with "every clause of `cnf` is entailed by `cnf`")
+give `Entailed cnf []`. Then `intro v; cases hv : Cnf.eval v cnf`: `false` is `rfl`; `true` makes `□`
+both entailed (`= true`) and `false` — `simp [Clause.eval]` closes it.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Write a certificate.** Refute `{p, ¬p}` (`[[⟨0,true⟩], [⟨0,false⟩]]`): one line resolving clauses
+   `0` and `1` on `⟨0,true⟩` to `□`. Define it and `#guard check … = true`.
+2. **Conceptual.** What is in the *trusted computing base* of this UNSAT pipeline, and what is *not*? Why
+   does emitting-and-checking a certificate give a stronger guarantee than a hand-audited solver?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — a one-line certificate
+
+```lean
+def egProof2 : List Step := [ { c := [], i := 0, j := 1, lit := ⟨0,true⟩ } ]
+#guard check [[⟨0,true⟩], [⟨0,false⟩]] egProof2 == true
+```
+
+Clauses `0 = [+0]` and `1 = [-0]` resolve on `+0`: each erases to nothing, so the resolvent is `□`. The
+checker recomputes `resolvent [+0] [-0] (+0) = []`, matches `c = []`, appends it, and finds `□` present.
+
+### Exercise 2 — the trusted computing base
+
+**Trusted:** the `check` function (a few dozen lines) and the Lean kernel that verifies `check_unsat`.
+**Untrusted:** the SAT solver that produced the certificate — it can be any optimised C program, even
+buggy, because every step is *re-derived* and checked here; a wrong step makes `checkStep` fail, and an
+unjustified `□` can never appear. Hand-auditing a 50k-line solver gives you only a human's confidence in
+50k lines; emitting-and-checking replaces that with a machine-checked proof that depends on a tiny,
+verified checker. That asymmetry — small trusted checker, arbitrary untrusted producer — is the central
+idea of certificate-based verification (and exactly what `bv_decide` does with CaDiCaL + a verified LRAT
+checker).
+
+## 9. Course 3 complete — and going further
+
+Course 3 built both sides of a **trustworthy SAT pipeline**: a DPLL **solver** with model soundness
+(slice 3.2), and a verified UNSAT **certificate checker** (this slice). The SAT side hands back a model
+you can check; the UNSAT side checks a refutation certificate — neither requires trusting an optimised
+solver.
+
+- **Toward CDCL.** Real solvers add conflict-driven clause learning, watched literals, and restarts. The
+  learned clauses are resolvents and the emitted proof is a resolution/RUP derivation — so *this* checker
+  (extended to RUP-chain hints) validates industrial solvers' output unchanged.
+- **Real LRAT/DRAT.** Swap single-resolution hints for reverse-unit-propagation chains and add deletion
+  lines for performance; the soundness invariant ("every database clause is entailed") is identical.
+- **Differential testing.** Feed DIMACS instances to a real solver and to `dpll`/`check`; the SAT/UNSAT
+  verdicts must agree. (Our oracle is the brute-force/DPLL pair, since CaDiCaL isn't installed here.)
+- **Next: Course 4 — Euclid** (LeanEuclid + SMT; needs a `cvc5` install), then **Course 5 — Gödel**.

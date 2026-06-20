@@ -1,0 +1,148 @@
+---
+title: "1.5 — A prover: search, sound by construction"
+---
+
+> **Where you are.** Slice 1.3 had you build derivation trees by hand — and it was painful. This slice
+> automates it: a function that *searches* for a `Γ ⊢ φ`. The twist that makes it beautiful in Lean: the
+> search returns a **typed** derivation, so whatever it finds is correct *by construction* — `prove_sound`
+> is two lines. Code graduates into `Principia.NatDed.Prover`.
+
+## 1. The question
+
+In slice 1.3 you tracked contexts in your head, named every assumption, pinned every elimination's hidden
+formula. A computer should do that. So we write `prove? : Nat → (Γ) → (φ) → Option (Γ ⊢ φ)`: given a
+context and a goal, search for a derivation. The return type already says everything about correctness —
+`Option (Γ ⊢ φ)`, so a `some` *carries an actual proof tree of exactly `φ`*. There's no way for the
+prover to "lie": the type-checker won't let it return a `some` unless it really built the derivation.
+
+## 2. The search, driven by the goal
+
+The strategy is **goal-directed**: look at the shape of `φ` and apply the matching *introduction* rule,
+recursing on the sub-goals; also try to close the goal directly from the context. `fuel` bounds the
+recursion so the function is total (it provably terminates — `fuel` strictly decreases).
+
+```lean
+def assumption? (Γ : List Form) (φ : Form) : Option (Γ ⊢ φ) :=
+  if h : φ ∈ Γ then some (.ax h) else none      -- membership is decidable (DecidableEq Form)
+
+def prove? : Nat → (Γ : List Form) → (φ : Form) → Option (Γ ⊢ φ)
+  | 0, _, _ => none                              -- out of fuel
+  | fuel + 1, Γ, φ =>
+    match assumption? Γ φ with
+    | some d => some d                           -- φ is an assumption → done
+    | none =>
+      match φ with
+      | .imp a b => (prove? fuel (a :: Γ) b).map (·.impI)        -- →I: assume a, prove b
+      | .and a b => match prove? fuel Γ a, prove? fuel Γ b with  -- ∧I: prove both
+                    | some da, some db => some (da.andI db)
+                    | _, _ => none
+      | .or a b  => match prove? fuel Γ a with                   -- ∨I: try left, else right
+                    | some da => some da.orI₁
+                    | none => (prove? fuel Γ b).map (·.orI₂)
+      | _ => none
+```
+
+The `match φ with` is a *dependent* match: in the `.imp a b` branch the goal type refines to `Γ ⊢ (a ⇒
+b)`, so `(prove? fuel (a :: Γ) b).map (·.impI)` — which maps a `Deriv (a::Γ) b` to a `Deriv Γ (a ⇒ b)` —
+has exactly the right type. The recursion *builds the tree as it searches*. `prove φ` just runs it on the
+empty context with fuel scaled to the formula's size.
+
+## 3. Sound by construction
+
+Here's the elegant part. We don't need to prove the *prover* correct by some separate argument about its
+code. The result is a `Deriv`, and slice 1.4 already proved every `Deriv` is sound. So:
+
+```lean
+theorem prove_sound {Γ φ fuel} (h : (prove? fuel Γ φ).isSome) : Entails Γ φ := by
+  cases hp : prove? fuel Γ φ with
+  | none   => rw [hp] at h; simp at h    -- `h` says it succeeded; `none` contradicts that
+  | some d => exact soundness d          -- `d : Γ ⊢ φ` — feed it to soundness
+```
+
+Two real lines. The `some d` case pulls the derivation out of the `Option`; `soundness d` turns it into
+the entailment. **Intrinsic typing did the heavy lifting** — the certificate was the return type all
+along. The closed-context version, `prove_tautology`, is the same idea with `tautology_of_proof`.
+
+## 4. The honest limit (and the payoff)
+
+This prover only ever applies *introduction* rules and the assumption rule. So it's **incomplete**: it
+finds `φ ⇒ φ`, `φ ⇒ ψ ⇒ φ`, `φ ⇒ ψ ⇒ (φ ⋏ ψ)` — anything whose proof is "introduce, introduce, …, use an
+assumption" — but it **misses** anything needing *elimination*, like `(φ ⋏ ψ) ⇒ φ`:
+
+```lean
+#guard (prove ((var 0 ⋏ var 1) ⇒ var 0)).isSome == false   -- the prover gives up…
+#guard taut? ((var 0 ⋏ var 1) ⇒ var 0) == true             -- …yet the formula IS valid
+```
+
+This asymmetry is important and worth saying plainly: **the prover's "yes" is trustworthy** (that's
+`prove_sound`), but its **"no" is not** — it only means *this* search failed. (`taut?`, the truth-table
+oracle from 1.2, is the reliable decider; the prover is about producing *proofs*.) The theoretical promise
+that a derivation *always* exists for a valid formula is **completeness**, slice 1.6.
+
+Still, within its fragment the prover delivers the dream of slice 1.3 — proofs with no hand-tracking:
+
+```lean
+example : Tautology (φ ⇒ φ) := prove_tautology (by decide)
+```
+
+`by decide` evaluates `(prove (φ ⇒ φ)).isSome` to `true`; `prove_tautology` consumes that and returns a
+*validity guarantee* — the search found the proof, the type certified it, soundness lifted it to truth.
+The whole pipeline, automatic.
+
+## 5. Prove it
+
+The search is given. Prove the two correctness theorems (`make lab C=01-natural-deduction/05-prover`):
+
+1. `prove_sound {Γ φ fuel} (h : (prove? fuel Γ φ).isSome) : Entails Γ φ`
+2. `prove_tautology {φ} (h : (prove φ).isSome) : Tautology φ`
+
+§3 is the walkthrough. Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+Both proofs follow the same two-case shape. The hypothesis `h` says the `Option` is `some`; so the
+`none` case is contradictory and the `some` case hands you a derivation.
+
+**1 `prove_sound`.** *Nudge:* `cases hp : prove? fuel Γ φ with | none => … | some d => …`. In `none`,
+rewrite `h` with `hp` and let `simp` close the contradiction; in `some`, the derivation `d : Γ ⊢ φ` is
+exactly what `soundness` wants. *More:* `| none => rw [hp] at h; simp at h | some d => exact soundness d`.
+
+**2 `prove_tautology`.** *Nudge:* identical, but `case` on `prove φ` and finish with
+`tautology_of_proof` instead of `soundness`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Auto-certify another tautology.** State and prove `example : Tautology (var 0 ⇒ (var 1 ⇒ var 0))`
+   using `prove_tautology (by decide)`. (Watch the prover discharge it with no hand-built tree.)
+2. **Conceptual.** In one or two sentences: why is the prover's *yes* reliable but its *no* not? Which
+   earlier theorem makes the *yes* trustworthy, and which future theorem would be needed to make a *no*
+   meaningful?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — certify K automatically
+
+```lean
+example : Form.Tautology (Form.var 0 ⇒ (Form.var 1 ⇒ Form.var 0)) :=
+  prove_tautology (by decide)
+```
+
+`prove (var 0 ⇒ (var 1 ⇒ var 0))` succeeds (two `impI`s then the assumption `var 0`), so `(prove …).isSome`
+computes to `true`, which `by decide` proves; `prove_tautology` then returns the validity guarantee. No
+`⟨…⟩`, no `.impI`, no membership juggling — the search built the tree and the types certified it.
+
+### Exercise 2 — yes vs no
+
+The prover returns a *typed* `Deriv`, and `prove_sound` (built on slice 1.4's `soundness`) shows any such
+`Deriv` is valid — so a **yes** is a genuine certificate. A **no**, though, only records that *this*
+introduction-only search ran out of moves; the formula might still be valid via elimination or classical
+reasoning (as `(φ ⋏ ψ) ⇒ φ` shows). Making a "no" trustworthy needs **completeness** (slice 1.6): *every*
+valid formula has *some* derivation, so failure to find one would imply invalidity.
+
+## 9. Going further
+
+- **Stretch:** extend `prove?` with elimination — e.g. when `a ⋏ b ∈ Γ`, derive `a`/`b` by `andE₁`/`andE₂`;
+  when `a ⇒ b ∈ Γ` and you can prove `a`, derive `b` by `impE`. Each step you add makes more formulas
+  provable while *automatically* staying sound (the type still certifies the result).
+- **Next: slice 1.6 — completeness.** The converse of soundness: `Γ ⊨ φ → Γ ⊢ φ`. Together with 1.4 it
+  closes the loop `⊢ ⟺ ⊨`, turning validity-checking into a genuine, certified decision procedure.

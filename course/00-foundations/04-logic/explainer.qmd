@@ -1,0 +1,258 @@
+---
+title: "04 — Logic, named: natural deduction, classical vs constructive, and semantics"
+---
+
+> **Where you are.** You can already build and break every connective (`02`) and reason by induction
+> over syntax trees (`03`). This lesson *names the system* you've been using — **natural deduction** —
+> lines its rules up against Lean's tactics, draws the **constructive/classical** boundary (and shows
+> what crossing it costs), and introduces the **semantics** of propositional logic: valuations, truth
+> tables, validity `⊨`. Everything here is the blueprint for **Course 1**, where these rules become a
+> data type, a *prover* searches for proofs built from them, and we prove that prover **sound and
+> complete** against exactly the semantics below. This is the bridge from "using Lean" to "building the
+> thing Lean is."
+
+## 1. The question
+
+Two questions have been hiding under everything you've done.
+
+1. **What is a proof, as an object?** You've been assembling proofs tactic by tactic. But a logician
+   would say a proof is a *tree of inference rules*. What are those rules, exactly, and how do they line
+   up with `intro`/`apply`/`cases`?
+2. **What does a proof guarantee?** A proof of `p → p` feels "obviously valid." Valid *in what sense*?
+   There's a second notion of truth — a formula being true under every assignment of truth values — and
+   the deep fact is that it coincides with provability. Pinning that down is the whole point of Course 1.
+
+## 2. Natural deduction, named
+
+Write `Γ ⊢ φ` for "**from the assumptions `Γ`, the formula `φ` is provable.**" `Γ` is a set of
+hypotheses (what you've assumed so far); `⊢` is the *syntactic* "provable" turnstile. Natural deduction
+is a fixed list of **inference rules**, each of the form "from these `⊢`-facts, conclude this one." For
+each connective there's an **introduction** rule (how to *prove* it) and an **elimination** rule (how to
+*use* it) — the same intro/elim pairing from `02`, now written formally:
+
+```text
+  assumption            (→I)  Γ, p ⊢ q          (→E)  Γ ⊢ p → q    Γ ⊢ p
+  ──────────                 ────────────             ─────────────────────
+  Γ, φ ⊢ φ                   Γ ⊢ p → q                       Γ ⊢ q
+
+  (∧I) Γ ⊢ p   Γ ⊢ q    (∧E) Γ ⊢ p ∧ q         (∨I) Γ ⊢ p              (∨E) Γ ⊢ p∨q  Γ,p⊢r  Γ,q⊢r
+       ────────────          ──────────              ──────────              ───────────────────────
+       Γ ⊢ p ∧ q             Γ ⊢ p  (and q)          Γ ⊢ p ∨ q              Γ ⊢ r
+```
+
+A **proof** is a *tree* built by stacking these rules, with leaves that are `assumption`. For example,
+here is a complete derivation of `⊢ p → (q → p)`:
+
+```text
+              ───────────── assumption
+              p, q ⊢ p
+            ─────────────── (→I)
+            p ⊢ q → p
+          ───────────────── (→I)
+          ⊢ p → (q → p)
+```
+
+Read bottom-up, that's exactly what `by intro hp; intro hq; exact hp` does. The correspondence is exact:
+
+| Inference rule | What it does | Lean tactic |
+|---|---|---|
+| assumption | use a hypothesis from `Γ` | `exact h` |
+| →I | to prove `p → q`, assume `p`, prove `q` | `intro` |
+| →E (modus ponens) | from `p → q` and `p`, get `q` | apply: `f hp` / `apply f` |
+| ∧I / ∧E | pair / project | `⟨_,_⟩`,`constructor` / `.1`,`.2` |
+| ∨I / ∨E | inject / case-split | `Or.inl`,`left` / `cases` |
+| ⊥E (ex falso) | from `False`, anything | `False.elim`,`exfalso` |
+| ¬I, ¬E | (since `¬p` *is* `p → False`, these are just →I/→E into `False`) | `intro` / apply |
+
+> **This is Course 1 in a nutshell.** There, `Γ ⊢ φ` stops being informal: we declare an `inductive`
+> type whose **constructors are exactly these rules**, so a *value* of that type **is** a proof tree.
+> Then a "prover" is a function that *searches* for such a value, and proving it correct means proving
+> things about the tree by induction — the very skill from `03`.
+
+## 3. Constructive vs classical
+
+Lean's logic is, by default, **constructive**: the rules in §2 only ever let you *build* evidence. The
+intended reading (called BHK) is operational:
+
+- a proof of `p ∧ q` is a proof of `p` *together with* a proof of `q`;
+- a proof of `p ∨ q` is a proof of `p` **or** a proof of `q`, *plus a tag saying which*;
+- a proof of `p → q` is a *procedure* turning any proof of `p` into one of `q`;
+- there is no proof of `False`.
+
+Under that reading, look at the **law of excluded middle**, `p ∨ ¬p`. To prove it you'd have to produce,
+*for every `p` uniformly*, either a proof of `p` or a proof of `¬p` — i.e. decide every proposition in
+advance. No such construction exists, so EM is **not provable** from the §2 rules. The same goes for
+double-negation elimination `¬¬p → p` and Peirce's law: each lets you conjure a proof of `p` from the
+mere impossibility of `¬p`, with no construction to back it.
+
+Classical logic simply *adds* one of these as a new rule (they're all interderivable). Lean keeps it in
+the `Classical` namespace so you opt in explicitly:
+
+```lean
+Classical.em (p : Prop)            : p ∨ ¬p          -- excluded middle
+Classical.byContradiction          : ¬¬p → p          -- "assume ¬p, derive False, conclude p"
+```
+
+(Note: the convenient `by_contra` *tactic* lives in Mathlib, which our core doesn't load — so here you
+use the term `Classical.byContradiction` directly.)
+
+**Crossing the line is visible — and it has a price.** Every classical proof, when you run
+`#print axioms` on it, lists `Classical.choice`:
+
+```lean
+#print axioms Classical.em       -- ⇒ depends on Classical.choice (and propext, Quot.sound)
+```
+
+That's not a leak or a cheat — `Classical.choice` is one of the three axioms the whole Lean/Mathlib world
+accepts. It's simply *honest bookkeeping*: the theorem genuinely used a classical principle. Our audit
+(`make axioms`) is happy with it; the only thing it ever rejects is `sorryAx`, the trace of a skipped
+proof. So: constructive proofs depend on *nothing*; classical proofs depend on `Classical.choice`; and
+you can always see which, at a glance.
+
+## 4. Semantics from zero
+
+So far "⊢" was about *building proofs*. There's a completely different, and much more concrete, notion of
+truth — **semantics** — that ignores proofs entirely and just computes.
+
+Fix the propositional variables (say `p`, `q`, …). A **valuation** `v` assigns each variable a truth
+value, `true` or `false`. Given `v`, the truth value of *any* formula is computed compositionally — this
+is the **truth table**:
+
+```text
+  ⟦p⟧ᵥ      = v p
+  ⟦φ ∧ ψ⟧ᵥ  = ⟦φ⟧ᵥ  and  ⟦ψ⟧ᵥ
+  ⟦φ ∨ ψ⟧ᵥ  = ⟦φ⟧ᵥ  or   ⟦ψ⟧ᵥ
+  ⟦φ → ψ⟧ᵥ  = (not ⟦φ⟧ᵥ) or ⟦ψ⟧ᵥ
+  ⟦¬φ⟧ᵥ     = not ⟦φ⟧ᵥ
+```
+
+A formula is a **tautology**, written `⊨ φ`, if `⟦φ⟧ᵥ = true` for **every** valuation `v`; and `Γ ⊨ φ`
+("`Γ` semantically entails `φ`") if every valuation making all of `Γ` true also makes `φ` true. Because a
+formula has finitely many variables, "for every valuation" is a finite check — propositional logic is
+**decidable** by exhaustively trying all `2ⁿ` rows of the truth table.
+
+You can watch that decision procedure run right now: over `Bool`, "for all valuations" is a finite `∀`,
+and `decide` evaluates it:
+
+```lean
+example : ∀ a b : Bool, (!(a && b)) = ((!a) || (!b)) := by decide   -- De Morgan, checked exhaustively
+#guard decide (∀ p : Bool, p || !p)                                  -- excluded middle, as a truth table
+```
+
+Notice excluded middle is a *theorem about truth values* with a one-line computational proof — but a
+*theorem about proofs* (`p ∨ ¬p` for arbitrary `Prop`) that needs a classical axiom. Two different
+turnstiles; §5 is about how they relate.
+
+## 5. The bridge: soundness and completeness
+
+We now have two notions:
+
+- `Γ ⊢ φ` — there is a **proof** (a derivation tree built from §2's rules). *Syntactic.*
+- `Γ ⊨ φ` — `φ` is **true** under every valuation satisfying `Γ`. *Semantic.*
+
+The two central theorems of propositional logic connect them:
+
+- **Soundness:** `Γ ⊢ φ ⟹ Γ ⊨ φ`. *Everything you can prove is actually true* — the rules never lie.
+  (Proved by induction on the derivation tree: check each rule preserves truth. Recognize the shape? It's
+  `eval_swap` from `03`, scaled up — "this operation on syntax respects the semantics.")
+- **Completeness:** `Γ ⊨ φ ⟹ Γ ⊢ φ`. *Everything true is provable* — the rules miss nothing.
+
+Together, **`⊢ φ ⟺ ⊨ φ`**: provability and validity coincide. The payoff is huge: since `⊨` is decidable
+by truth tables, a **prover** that searches for `⊢`-derivations becomes a genuine *decision procedure* for
+logical truth — and soundness is what lets you *trust* its "yes."
+
+**This is precisely the spine of Courses 1–2.** Course 1 formalizes `Form`, `⟦·⟧`, `⊢` (natural
+deduction) and proves **soundness and completeness** for the propositional fragment — then builds a prover
+that works for first-order logic too. Course 2 does the analogous thing for *resolution*. Everything you
+prove past this point lives in the gap between these two turnstiles. (A nuance to file away: classical
+provability matches the Boolean truth-table semantics above; *constructive* provability has its own,
+richer "Kripke" semantics — but that's a road we won't need.)
+
+## 6. Prove it
+
+Prove the four **classical** theorems in `Skeleton.lean` (each needs `Classical.em` or
+`Classical.byContradiction` — recall `by_contra` is unavailable in our core). Check with:
+
+```bash
+make lab C=00-foundations/04-logic
+```
+
+1. `dne : ¬¬p → p`
+2. `em : p ∨ ¬p`  — try to **derive** it, not just cite `Classical.em`
+3. `peirce : ((p → q) → p) → p`
+4. `not_and : ¬(p ∧ q) → ¬p ∨ ¬q`
+
+Try cold; §7 has graduated hints. When done, run `#print axioms` (it's in `Solution.lean`) and watch
+`Classical.choice` appear — the footprint of having reasoned classically.
+
+## 7. Hints for the skeleton
+
+**1 `dne`.** *Nudge:* this is *exactly* what `Classical.byContradiction` says. *More:* `intro h`, then
+`exact Classical.byContradiction h`.
+
+**2 `em`.** *Nudge:* prove it *by contradiction* — assume `¬(p ∨ ¬p)` and derive `False`. *More:*
+`apply Classical.byContradiction; intro h`; now `h : ¬(p ∨ ¬p)`. Build the right side from a hypothetical
+`p` (`fun hp => h (Or.inl hp) : ¬p`), inject it with `Or.inr`, and feed the whole thing back to `h`.
+
+**3 `peirce`.** *Nudge:* `intro h`, then go by contradiction with `hnp : ¬p`. To use `h`, you need a proof
+of `p → q` — but `¬p` makes one for free (`fun hp => absurd hp hnp`). *More:*
+`exact hnp (h (fun hp => absurd hp hnp))`.
+
+**4 `not_and`.** *Nudge:* `intro h`, then split on `Classical.em p`. *More:* if `hp : p`, the answer is
+`Or.inr (fun hq => h ⟨hp, hq⟩)`; if `hnp : ¬p`, it's `Or.inl hnp`.
+
+## 8. Exercises (optional, for fluency)
+
+1. **Feel the asymmetry.** Prove the **converse** of #4 — `not_and_converse : (¬p ∨ ¬q) → ¬(p ∧ q)` — and
+   then run `#print axioms` on it. It needs **no** classical logic. Why is one direction of De Morgan
+   constructive and the other not? (Hint at the answer: building a proof vs. *deciding* which side holds.)
+2. **A classical staple.** Prove `not_imp : ¬(p → q) → p ∧ ¬q`. *Hint:* `constructor`; for the `p` half,
+   go by contradiction; for the `¬q` half, assume `q` and note `fun _ => q` is a proof of `p → q`.
+
+## 9. Corrections to the optional exercises
+
+### Exercise 1 — `not_and_converse` (constructive!)
+
+```lean
+theorem not_and_converse (p q : Prop) : (¬p ∨ ¬q) → ¬(p ∧ q) := by
+  intro h hpq
+  cases h with
+  | inl hnp => exact hnp hpq.1
+  | inr hnq => exact hnq hpq.2
+```
+
+`intro h hpq` gives `h : ¬p ∨ ¬q` and `hpq : p ∧ q`, with goal `False`. `cases h`: if the left side holds
+(`hnp : ¬p`), contradict it with `hpq.1 : p`; if the right (`hnq : ¬q`), with `hpq.2`. **`#print axioms`
+reports no axioms** — purely constructive. The contrast with `not_and` is the heart of §3: *given* a
+broken conjunction, deducing "one of them fails" requires *deciding which* — a classical act — whereas
+*given* a known failure, refuting the conjunction is a direct construction.
+
+### Exercise 2 — `not_imp` (classical)
+
+```lean
+theorem not_imp (p q : Prop) : ¬(p → q) → p ∧ ¬q := by
+  intro h
+  constructor
+  · apply Classical.byContradiction
+    intro hnp
+    exact h (fun hp => absurd hp hnp)
+  · intro hq
+    exact h (fun _ => hq)
+```
+
+`constructor` splits the goal `p ∧ ¬q`. **For `p`:** by contradiction — if `hnp : ¬p`, then
+`fun hp => absurd hp hnp : p → q` (vacuously), and `h` of that is `False`. **For `¬q`:** assume `hq : q`;
+then `fun _ => hq : p → q` (ignore the input, return `q`), and again `h` of it is `False`. Both halves lean
+on the classical idea that "`p → q` is false" forces `p` true and `q` false — which only makes sense once
+you can rule out the in-between, i.e. classically.
+
+## 10. Going further
+
+- **Logic and Proof** — `../../references/logic_and_proof`: the natural-deduction chapters (the rules of
+  §2 on paper, with many worked proof trees) and the semantics/soundness/completeness chapters. This is
+  *the* companion text for Course 1.
+- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, the *Axioms and Computation*
+  chapter, for exactly what `Classical.choice`, `propext`, and `Quot.sound` are and why they're safe.
+- **Next: Course 1.** We leave the foundations and build the real thing — formalize `Form`, the semantics
+  `⟦·⟧`, the natural-deduction relation `⊢`, prove **soundness** and **completeness** for propositional
+  logic, and write a **prover** that searches for derivations (and works for first-order logic too).

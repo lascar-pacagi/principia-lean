@@ -1,0 +1,198 @@
+---
+title: "4.1 — Euclid's first proposition, made honest"
+---
+
+> **Where you are.** A change of pace: from automated reasoning to *the* founding text of axiomatic
+> mathematics — Euclid's *Elements*. Proposition I.1 builds an equilateral triangle on a given segment.
+> Euclid's proof is two sentences and a picture — and the picture hides an assumption his postulates never
+> grant. We rebuild it in Lean so that nothing hides: the postulates become a `class` (no `axiom`
+> keyword), and the one missing ingredient — that two circles actually *meet* — is named out loud. Code
+> graduates into `Principia.Euclid.Basic`.
+
+## 1. The question
+
+Euclid's *Elements* (c. 300 BC) derives geometry from five postulates and some "common notions." It is the
+model for all axiomatic mathematics — *and* a cautionary tale: many proofs lean on the diagram for facts
+the postulates don't state. Proposition I.1 is the very first, and it already does this. Our job: state
+just enough geometry, honestly, to prove I.1 — and surface exactly what the diagram was smuggling in.
+
+## 2. The construction
+
+> **I.1.** *On a given straight segment, to construct an equilateral triangle.*
+
+Given segment `AB`: draw the circle centred `A` through `B`, and the circle centred `B` through `A`. Let
+`C` be a point where they cross. Then `AC` and `AB` are radii of the first circle, so `AC ≅ AB`; `BC` and
+`BA` are radii of the second, so `BC ≅ AB`. Hence all three sides are equal — `ABC` is equilateral.
+
+![The two equal circles meet at **C**; `AC` and `BC` are radii equal to `AB`, so triangle `ABC` is equilateral. (`C′` is the other intersection — the construction has two solutions.)](fig-i1.svg){width=62%}
+
+Notice the entire argument is *bookkeeping with radii* — except for the words "**let `C` be a point where
+they cross**." Nothing among "draw a circle / draw a line" guarantees a crossing point exists. That is the
+gap (§4).
+
+## 3. The honest axiom system
+
+We could write Lean `axiom` declarations — but then the whole development would silently rest on
+*unaudited* assumptions (and our honesty rule forbids it). Instead we package the postulates as a
+**`class`**: a model is any type `Point` with a congruence relation satisfying the axioms, and every
+theorem is implicitly "*in any such model*." No `axiom` keyword appears; the postulates are honest
+*hypotheses*.
+
+We take a **Tarski-style** primitive: `Cong a b c d` means "segment `ab` is as long as segment `cd`."
+
+```lean
+class EuclidPlane (Point : Type) where
+  Cong : Point → Point → Point → Point → Prop
+  cong_pseudo_refl : ∀ {a b}, Cong a b b a                              -- a segment equals its reverse
+  cong_trans : ∀ {a b p q r s}, Cong a b p q → Cong a b r s → Cong p q r s  -- Tarski transitivity
+  cong_identity : ∀ {a b c}, Cong a b c c → a = b                       -- only a point is null-length
+  circles_meet : ∀ (a b : Point), ∃ c, Cong a c a b ∧ Cong b c b a      -- ⟵ the continuity postulate
+```
+
+The first three are Tarski's congruence axioms (a remarkably spare basis). The fourth, `circles_meet`, is
+the continuity instance I.1 needs — written as: *there is a point `c` at distance `ab` from `a` and at
+distance `ba` from `b`* — i.e. a point on **both** circles. This single line is the assumption Euclid's
+diagram supplied for free.
+
+## 4. The proof — and the gap
+
+**First, congruence behaves like equality.** Tarski's axioms look odd (why `Cong a b b a` and that
+strange transitivity?), but they pack everything in. From just `cong_pseudo_refl` and `cong_trans` you get
+reflexivity, symmetry, and ordinary transitivity:
+
+- `cong_refl : Cong a b a b` — feed two copies of `Cong b a a b` to `cong_trans`.
+- `cong_symm : Cong a b c d → Cong c d a b` — `cong_trans` the hypothesis with `cong_refl`.
+- `cong_trans' : Cong a b c d → Cong c d e f → Cong a b e f` — flip the first with `cong_symm`, then apply
+  `cong_trans`.
+
+**Then I.1 is short.** `circles_meet a b` hands us the apex `c` with `Cong a c a b` and `Cong b c b a`;
+the three side-equalities are just the equivalence lemmas applied:
+
+```lean
+theorem prop_I1 (a b : Point) : ∃ c, Cong a b a c ∧ Cong a b b c ∧ Cong a c b c := by
+  obtain ⟨c, hca, hcb⟩ := circles_meet a b
+  refine ⟨c, cong_symm hca, ?_, ?_⟩
+  · exact cong_trans' cong_pseudo_refl (cong_symm hcb)                    -- ab ≅ ba ≅ bc
+  · exact cong_trans' hca (cong_trans' cong_pseudo_refl (cong_symm hcb))  -- ac ≅ ab ≅ bc
+```
+
+**Why `circles_meet` is not optional.** It is tempting to think two overlapping circles "obviously" meet.
+But "obvious" is exactly what a proof may not use. Here is the killer example. Work in the plane of points
+with *rational* coordinates, `ℚ²`, and take
+
+```
+        A = (0, 0)        B = (1, 0)        |AB| = 1
+        circle centred A, radius 1 :  x² + y² = 1
+        circle centred B, radius 1 : (x−1)² + y² = 1
+```
+
+Subtracting gives `x = 1/2`, and then `y² = 3/4`, so `y = ±√3/2`. The two circles **cross at
+`(1/2, ±√3/2)` — points whose coordinates are irrational.** In `ℚ²` those points *do not exist*: the
+circles pass through each other with no intersection point, and **I.1 is false**. Everything in §3 still
+holds in `ℚ²` *except* `circles_meet`. So I.1 genuinely *requires* a continuity axiom — it is not derivable
+from incidence and congruence alone. (The real plane `ℝ²` has the missing points; that's what
+completeness/continuity buys you.)
+
+```
+   ℝ²  (continuous):  circles meet → C exists → I.1 holds
+   ℚ²  (full of holes): same circles, no crossing point → I.1 FAILS
+        y                              the crossing would be at
+        |   .-''-.  .-''-.             (½, ±√3/2) — not in ℚ²,
+        | ,'      X      ',            so there is literally no
+        |/        ··        \          point there to call C.
+   -----A=========B----------- x
+        |\        ··        /
+        | '.      X      .'
+        |   '-..-'  '-..-'
+```
+
+That hole is the whole lesson: *a diagram is not a proof.* By forcing the assumption into `circles_meet`,
+Lean makes us say precisely what we rely on.
+
+## 5. Prove it
+
+The class `EuclidPlane` is given. Prove (`make lab C=04-euclid/01-equilateral`):
+
+1. `cong_refl a b : Cong a b a b`
+2. `cong_symm : Cong a b c d → Cong c d a b`
+3. `cong_trans' : Cong a b c d → Cong c d e f → Cong a b e f`
+4. `prop_I1 a b : ∃ c, Cong a b a c ∧ Cong a b b c ∧ Cong a c b c`
+
+Your only tools are the four axiom fields (and earlier lemmas as you prove them). §4 is the walkthrough;
+§6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `cong_refl`.** *Nudge:* `cong_pseudo_refl` (at `b a`) is `Cong b a a b`; `cong_trans` of it with
+itself yields `Cong a b a b`. *Term:* `cong_trans cong_pseudo_refl cong_pseudo_refl`.
+
+**2 `cong_symm`.** *Nudge:* `cong_trans h (cong_refl a b)` — `h : Cong a b c d` and `Cong a b a b` share
+the left segment, so the conclusion is `Cong c d a b`.
+
+**3 `cong_trans'`.** *Nudge:* `cong_symm h1 : Cong c d a b`; now it shares `c d` with `h2 : Cong c d e f`,
+so `cong_trans (cong_symm h1) h2 : Cong a b e f`.
+
+**4 `prop_I1`.** *Nudge:* `obtain ⟨c, hca, hcb⟩ := circles_meet a b`, then `refine ⟨c, ?_, ?_, ?_⟩`. Each
+goal is a chain of `cong_symm` / `cong_trans'` / `cong_pseudo_refl` over `hca : Cong a c a b` and
+`hcb : Cong b c b a` — see the three lines in §4.
+
+## 7. Exercises (optional, for fluency)
+
+1. **The other vertex.** The construction has a *second* solution `C′` (below `AB`). What in our
+   formalisation reflects that `C` is not unique — and would adding "the point above the line" require new
+   primitives?
+2. **Spot the smuggling.** In your own words, list every place Euclid's two-sentence proof uses the
+   diagram. Which one is `circles_meet`, and which ones are "free" given our `Cong` axioms?
+3. **A model.** Convince yourself the one-point type `Unit` satisfies `EuclidPlane` (the Solution builds
+   this instance). Why does its existence show the axioms are *consistent*, and why is it a *degenerate*
+   model — i.e. what interesting geometry does it collapse?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — non-uniqueness
+
+`circles_meet` promises `∃ c, …` — *a* crossing point, with no claim of uniqueness — which is exactly
+right, since there are two (`C` and `C′`). Our segment-congruence language has no notion of "side of a
+line" or orientation, so it *cannot* distinguish them, and `prop_I1` correctly asserts only *existence* of
+an equilateral triangle. Pinning down "the one above `AB`" would need a **betweenness**/orientation
+primitive (Tarski's other relation, `Betw`) and further axioms — the natural content of a follow-up slice.
+
+### Exercise 2 — what the diagram supplies
+
+Euclid uses the picture for: (a) *the two circles cross* — this is `circles_meet`, the genuine gap; (b)
+*`AC`, `AB` are radii of one circle, `BC`, `BA` of the other* — for us this is the **definition** of being
+on a circle (`Cong a c a b`), so it's free; (c) *radii of one circle are equal* — free, that's what
+congruence-to-the-same-segment means, handled by `cong_trans`/`cong_symm`. Only (a) is an extra
+assumption; the rest are bookkeeping our axioms already cover.
+
+### Exercise 3 — the trivial model
+
+```lean
+instance : EuclidPlane Unit where
+  Cong _ _ _ _ := True
+  cong_pseudo_refl := trivial
+  cong_trans _ _ := trivial
+  cong_identity _ := rfl                  -- in `Unit`, any two points are equal
+  circles_meet _ _ := ⟨(), trivial, trivial⟩
+```
+
+A model exists, so the axioms can't prove `False` — they're **consistent**, hence `prop_I1` (and friends)
+aren't vacuously true. It's *degenerate* because `Unit` has a single point: every "segment" is null, all
+congruences hold trivially, and there's no real distance or shape — it satisfies the *letter* of the
+axioms while collapsing all geometry. (To rule it out you'd add axioms asserting distinct points exist —
+"lower dimension" axioms in Tarski's system.)
+
+## 9. Going further
+
+- **Betweenness.** Tarski's full system adds `Betw a b c` ("`b` is between `a` and `c`") with its own
+  axioms; together with `Cong` it can express segment ordering, the SAS congruence of I.4, the isosceles
+  theorem I.5 (*pons asinorum*), and onward. A natural next slice.
+- **Hilbert vs Tarski.** Hilbert's *Grundlagen* (1899) repaired the *Elements* with primitives for points,
+  lines, incidence, betweenness, congruence, and explicit continuity (Archimedes + completeness). Tarski's
+  later system is first-order and minimal — what we used. Both make the I.1 gap a stated axiom.
+- **The continuity zoo.** "Two circles meet" is *elementary continuity*; full continuity is Dedekind's
+  axiom. Our `circles_meet` is the weakest form that rescues I.1 — deliberately, so the lesson is sharp.
+- **LeanEuclid.** The research system (Lean + SMT) checks Book I diagrammatically with an automated
+  back-end; we instead built the axioms by hand to *see* the gap. Same moral, opposite ergonomics.
+- **Next: Course 5 — Gödel's incompleteness** (the abstract diagonal core, Tarski undefinability, and the
+  first incompleteness theorem).

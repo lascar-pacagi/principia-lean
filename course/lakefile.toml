@@ -1,0 +1,9 @@
+# Principia — the course library. Pure Lean 4 (no Mathlib): the logic core is built from scratch
+# for fast builds and full control. Mathlib enters only via self-contained sub-projects
+# (vendored MIL for Course 0.5; LeanEuclid for Course 4; FFL-Foundation for Course 5).
+name = "principia"
+version = "0.1.0"
+defaultTargets = ["Principia"]
+
+[[lean_lib]]
+name = "Principia"

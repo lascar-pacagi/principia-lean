@@ -1,0 +1,131 @@
+---
+title: "2.3 — A resolution prover by saturation"
+---
+
+> **Where you are.** Slice 2.2 let you build refutations by hand. This slice automates the search:
+> **saturation** — keep resolving every pair of clauses until the empty clause `□` shows up. As in slice
+> 1.5, the search returns a *typed* `Refut S []`, so a "yes" is a real, kernel-checked refutation. Code
+> graduates into `Principia.Resolution.Prover`.
+
+## 1. The question
+
+Given a clause set, can resolution reach `□`? The most direct strategy: **saturate** — compute *all*
+resolvents of the clauses you have, add them to the pile, and repeat. If the set is unsatisfiable, `□`
+eventually appears (slice 2.5 proves this); we bound the rounds with `fuel`.
+
+## 2. Carrying the proof along
+
+The trick that makes the result trustworthy: don't just track *clauses*, track **clauses paired with
+their refutation-derivations**. An entry is a dependent pair
+
+```lean
+abbrev Entry (S : Cnf) := Σ c : Clause, Refut S c     -- a clause `c`, and a proof `Refut S c`
+```
+
+We start from the hypotheses (`Cnf.entries`: each clause of `S` with its `hyp` derivation). Resolving two
+entries builds a *new* entry whose proof is a `res` node over the two parents — so the `Refut` tree grows
+exactly as the search does, and is finished the moment we reach an entry whose clause is `□`.
+
+## 3. The search
+
+```lean
+def pairResolvents (e1 e2 : Entry S) : List (Entry S) :=          -- resolve e1 against e2,
+  e1.1.filterMap fun l =>                                          --   on each literal l of e1
+    if l.neg ∈ e2.1 then some ⟨resolvent e1.1 e2.1 l, .res l e1.2 e2.2⟩ else none
+def allResolvents (es : List (Entry S)) : List (Entry S) :=        -- all pairs
+  es.flatMap fun e1 => es.flatMap fun e2 => pairResolvents e1 e2
+def search : Nat → List (Entry S) → Option (Refut S [])
+  | 0,        es => findEmpty es
+  | fuel + 1, es => match findEmpty es with
+    | some d => some d                                             -- □ found — done
+    | none   => search fuel (es ++ allResolvents es)              -- saturate one more round
+def refute? (S : Cnf) (fuel : Nat) : Option (Refut S []) := search fuel S.entries
+```
+
+`findEmpty` scans entries for one whose clause is `[]` and returns its proof (a tiny dependent cast `h ▸
+e.2 : Refut S []`). Run it:
+
+```lean
+#eval (refute? [[⟨0,true⟩], [⟨0,false⟩]] 3).isSome                            -- true
+#eval (refute? [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]] 4).isSome      -- true
+#eval (refute? [[⟨0,true⟩]] 5).isSome                                         -- false  ({p} is satisfiable)
+```
+
+## 4. Sound by construction
+
+Because `refute?` hands back a `Refut S []` (not a mere `Bool`), correctness is a read-off — exactly like
+`prove_sound` in slice 1.5:
+
+```lean
+theorem refute?_refutable {S fuel} (h : (refute? S fuel).isSome) : S.Refutable := by
+  cases hp : refute? S fuel with
+  | none   => rw [hp] at h; simp at h     -- `h` says it succeeded; `none` contradicts that
+  | some d => exact ⟨d⟩                    -- a real refutation; wrap as `Nonempty`
+```
+
+So a successful search *is* a certificate that `□` is derivable. And you can run + certify in one shot:
+`example : Cnf.Refutable [[+0],[-0]] := refute?_refutable (fuel := 3) (by decide)` — `decide` computes the
+search to `true`, and the typed result does the rest.
+
+## 5. Honest limits
+
+The search is deliberately naive: it keeps *every* clause (no subsumption or dedup) and bounds rounds by
+`fuel`. So its **yes is a genuine refutation**, but a **no** only means "not found in this many rounds."
+What a "no" *should* mean — "no refutation exists, so the set is satisfiable" — needs two more theorems:
+**soundness** (slice 2.4: a refutation implies unsatisfiability, so "yes" really means unsat) and
+**refutation-completeness** (slice 2.5: every unsatisfiable set *has* a refutation, so a complete search's
+"no" really means sat).
+
+## 6. Prove it
+
+The search is given. Prove `refute?_refutable` (`make lab C=02-resolution/03-prover`):
+
+```lean
+theorem refute?_refutable {S fuel} (h : (refute? S fuel).isSome) : S.Refutable
+```
+
+§4 is the walkthrough. Try cold; §7 has hints.
+
+## 7. Hints for the skeleton
+
+*Nudge:* `cases hp : refute? S fuel`. The `none` case contradicts `h` (a `none` isn't `isSome`); the
+`some d` case gives you `d : Refut S []`, and `S.Refutable` is `Nonempty (Refut S [])`. *More:*
+`| none => rw [hp] at h; simp at h | some d => exact ⟨d⟩`.
+
+## 8. Exercises (optional, for fluency)
+
+1. **Certify a refutation.** Prove `Cnf.Refutable [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]]` using
+   `refute?_refutable` and `by decide` (pick enough fuel — `4` works).
+2. **Conceptual.** Why does the prover store `Entry = Σ c, Refut S c` (clauses *with* their proofs) rather
+   than just `List Clause`? What guarantee would be lost if it tracked only clauses?
+
+## 9. Corrections to the optional exercises
+
+### Exercise 1 — certify `{p∨q, ¬p, ¬q}`
+
+```lean
+example : Cnf.Refutable [[⟨0,true⟩, ⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]] :=
+  refute?_refutable (fuel := 4) (by decide)
+```
+
+`decide` evaluates `(refute? … 4).isSome` to `true` (the search finds the two-step refutation from slice
+2.2 on its own); `refute?_refutable` turns that into refutability. You never name the resolution steps —
+the saturation found them, and the types certified the result.
+
+### Exercise 2 — why carry the proofs
+
+If the prover tracked only `List Clause`, reaching `□` would tell you a clause equal to `[]` is *present*,
+but not *why* — you'd have no evidence it was derived by valid resolution steps from `S` (a buggy
+`resolvent` could sneak in a bogus `□`). By pairing each clause with a `Refut S c`, the type system forces
+every entry to be a real derivation, so the final `Refut S []` is a complete, checkable proof. It's the
+same "make illegal states unrepresentable" discipline as the typed `Deriv`/`prove` of Course 1: the
+certificate is built *into* the search.
+
+## 10. Going further
+
+- **Efficiency.** Real solvers add *subsumption* (drop clauses implied by others), the *set-of-support*
+  strategy, and indexing — turning this exponential saturation into something practical. None affects
+  correctness (the types still certify any `□` found).
+- **Next: slice 2.4 — soundness.** `Refut S [] → S.Unsat`: a refutation really does witness
+  unsatisfiability (each resolution step preserves models). That is what finally gives the prover's "yes"
+  its semantic meaning — and, via slice 2.1's bridge, makes resolution a *proof* method for validity.

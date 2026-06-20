@@ -1,0 +1,389 @@
+---
+title: "00 — Setup: your first proofs, and the loop"
+---
+
+> **Where you are.** This is the very first concept. By the end you'll have written three real proofs
+> that Lean's kernel has *checked*, and you'll understand the cycle you'll repeat for the rest of the
+> course. No prior Lean or logic is assumed. Take it slowly — every idea here comes back later.
+
+## 1. What Lean actually is
+
+Lean is two things fused into one program:
+
+1. **A programming language** — you write functions, data types, recursion, much like any typed
+   functional language (think Haskell or the typed core of Swift/Rust).
+2. **A proof checker** — you state mathematical claims and write proofs of them, and Lean *mechanically
+   verifies* that each proof is airtight.
+
+The reason these can be the *same* system is the most important idea in the whole course, so we'll spend
+real time on it in §3. For now, the practical consequence:
+
+> **A tiny, trusted part of Lean — the *kernel* — has the final say.** Everything you write is
+> ultimately reduced to something the kernel checks. If the kernel accepts it, it is correct. Not
+> "looks correct," not "the author is confident" — *correct*, with the same finality as `2 + 2 = 4`.
+
+This is why this course can be pure learn-by-doing with no human grader. You don't submit a proof and
+wait for feedback. You either get the proof past the kernel (it compiles — we call that **green**) or
+you don't (**red**). Green *is* the grade, and it is incorruptible. Our whole course leans on this: the
+kernel is the **oracle**, and unlike a textbook's answer key, you cannot fudge it.
+
+## 2. The pieces in front of you
+
+This concept is a directory with four files. You'll see this same shape every time:
+
+| File | What it is | You edit it? |
+|---|---|---|
+| `README.md` | the objective and "definition of done" | no |
+| `explainer.qmd` | **this lesson** | no |
+| `Skeleton.lean` | the theorems, with their proofs left as `sorry` + tips | **yes — this is your workspace** |
+| `Solution.lean` | the finished, verified proofs (+ a couple of checks) | peek only when stuck |
+
+The workflow is one command:
+
+```bash
+make lab C=00-foundations/00-setup
+```
+
+That asks Lean to check **your** `Skeleton.lean`. While any proof is missing, it's **red**; when you've
+filled them all in correctly, it turns **green**. That red→green pulse is the heartbeat of the course.
+
+## 3. The big idea: a proof is a program
+
+Here is the insight that makes Lean work — *propositions-as-types*, also called the Curry–Howard
+correspondence. Don't worry about the names; worry about the picture.
+
+In an ordinary typed language you write things like `x : Nat` — "`x` is a value of type `Nat`." Lean
+uses that *exact same* notation for proofs:
+
+```lean
+h : p
+```
+
+reads "`h` is a proof of the proposition `p`." A **proposition** (something that could be true or
+false, like "`p` and `q`") is treated as a **type**, and a **proof** of it is a **value** (a term) of
+that type. So:
+
+- To *prove* a proposition = to *construct* a value of its type.
+- "`p` is true" = "the type `p` has at least one value" (we can build a proof).
+- "`p` is false-and-unprovable" = "the type `p` is empty" (no value can be built).
+
+Why is this a good idea? Because now **building a proof is just programming**, and **checking a proof is
+just type-checking** — something computers are extremely good at and we already trust. A proof of an
+implication `p → q` is literally a *function* that turns a proof of `p` into a proof of `q`. A proof of
+"`p` and `q`" is a *pair*: one proof of `p` alongside one proof of `q`. We'll see both right now.
+
+(One technicality you can file away: propositions live in a special universe called `Prop`, where Lean
+ignores *which* proof you built — any two proofs of the same proposition are interchangeable. That's the
+difference between `Prop` and the data type `Nat`, where `2` and `3` are genuinely different. It won't
+trip you up today.)
+
+## 4. Your first proof, two ways: `and_swap`
+
+The claim: *if `p` and `q` both hold, then `q` and `p` both hold.* In Lean:
+
+```lean
+theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := ...
+```
+
+Read the signature like a function declaration:
+
+- `(p q : Prop)` — two arbitrary propositions (inputs).
+- `(h : p ∧ q)` — a proof that *both* hold (another input). `∧` is "and."
+- `: q ∧ p` — the thing we must produce (the output type / the goal).
+- `:= ...` — the proof itself (the function body) goes here.
+
+**What is `∧`, concretely?** In Lean, `p ∧ q` is a little structure with two fields: a proof of `p` and
+a proof of `q`. You build one with the *anonymous constructor* `⟨_, _⟩` (type the brackets as `\<` and
+`\>` in the editor), and you take it apart with `.1` (the first field) and `.2` (the second). So from
+`h : p ∧ q` we have `h.1 : p` and `h.2 : q`.
+
+### Term-mode proof (build the value directly)
+
+```lean
+theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := ⟨h.2, h.1⟩
+```
+
+That's the whole proof. We need a proof of `q ∧ p`, i.e. a pair `⟨proof of q, proof of p⟩`. We have
+`h.2 : q` and `h.1 : p`, so `⟨h.2, h.1⟩` has exactly type `q ∧ p`. The kernel checks the types line up,
+and accepts. A proof really is just a small data structure you assemble.
+
+### Tactic-mode proof (build it interactively)
+
+For anything bigger, writing the term directly is hard, so we usually build proofs *step by step* using
+**tactics**, inside a `by` block. The same theorem:
+
+```lean
+theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
+  constructor   -- goal `q ∧ p` splits into two goals: `q` and `p`
+  · exact h.2   -- prove the `q` goal using h.2
+  · exact h.1   -- prove the `p` goal using h.1
+```
+
+What's happening:
+
+- `by` switches into tactic mode. Lean now shows you a **goal state**: the hypotheses you have (here
+  `p q : Prop`, `h : p ∧ q`) above a line, and the goal (`⊢ q ∧ p`) below it. The turnstile `⊢` means
+  "you must prove."
+- `constructor` says "build the goal with its constructor." Since `q ∧ p` is built from a proof of `q`
+  and a proof of `p`, this replaces one goal with **two**: `⊢ q` and `⊢ p`.
+- The `·` bullets focus on one goal at a time. `exact h.2` says "the goal is *exactly* this term" — and
+  `h.2 : q` matches `⊢ q`. Likewise `exact h.1` closes `⊢ p`.
+
+Tactics don't produce a different kind of proof — behind the scenes they assemble the very same term
+`⟨h.2, h.1⟩`. They're just a more convenient way to write it. **The single most important habit in
+Lean:** in your editor, put the cursor at different points and *read the goal state*. It tells you
+exactly what you have and what's left to prove.
+
+## 5. When the computer can just check it: `two_plus_two`
+
+Some claims are true simply because *both sides compute to the same thing*. The kernel can run
+computations, so:
+
+```lean
+theorem two_plus_two : 2 + 2 = 4 := by rfl
+```
+
+`rfl` stands for *reflexivity*: it proves goals of the form `a = a`. But Lean checks equality **up to
+computation** (the jargon is *definitional equality*): it evaluates `2 + 2`, gets `4`, sees `4 = 4`, and
+accepts. You didn't reason about addition — you let the kernel *do* the addition. (This is the
+"programming language" half of Lean earning its keep.)
+
+A close cousin you'll use a lot is `decide`, which works for any claim Lean knows how to *decide* by a
+terminating computation (equalities of concrete numbers, `≤` on numbers, etc.):
+
+```lean
+theorem two_plus_two' : 2 + 2 = 4 := by decide
+```
+
+Rule of thumb: if a goal is about *specific* values, try `rfl` or `decide` before reasoning by hand.
+
+## 6. Your first induction: `zero_add'`
+
+Now the interesting one. We'll prove `0 + n = n` for *every* natural number `n`. You might expect this
+to be as free as `2 + 2 = 4`. It isn't — and *why* is genuinely illuminating.
+
+Natural numbers in Lean are built from two constructors: `0` (zero) and `n + 1` (the successor of `n`).
+Addition is *defined by recursion on its second argument*:
+
+```lean
+-- (this is how Nat.add is defined in Lean's core, paraphrased)
+n + 0      = n                 -- base equation
+n + (m+1)  = (n + m) + 1       -- step equation
+```
+
+Look carefully. The pattern-match is on the **second** argument:
+
+- `n + 0 = n` is true *by definition* — the base equation says so directly. So `n + 0 = n` is provable
+  by `rfl`, no work. Try it!
+- `0 + n = n` is **not** one of the equations. To compute `0 + n` you must peel `n` apart, and `n` is a
+  *variable* — the kernel can't peel an unknown. So `rfl` is stuck. We need **induction**: prove it for
+  `0`, then prove that *if* it holds for `k` it holds for `k + 1`. Those two cases cover every natural
+  number, because every natural number is reachable from `0` by repeatedly adding `1`.
+
+This asymmetry (`add_zero` free, `zero_add` needs induction) surprises everyone the first time. It's not
+a quirk — it's the shape of the definition showing through. Here's the proof:
+
+```lean
+theorem zero_add' (n : Nat) : 0 + n = n := by
+  induction n with
+  | zero      => rfl
+  | succ k ih => rw [Nat.add_succ, ih]
+```
+
+Walking through it with the goal state in mind:
+
+- `induction n with` splits into the two cases above, named `zero` and `succ`.
+- **Case `zero`** — goal `⊢ 0 + 0 = 0`. By the base equation `0 + 0` *is* `0`, so this is `rfl`.
+- **Case `succ k ih`** — we're proving it for `k + 1`, and we get to *assume* it for `k`. That
+  assumption is the **induction hypothesis** `ih : 0 + k = k`. The goal is `⊢ 0 + (k + 1) = k + 1`.
+  - `rw [Nat.add_succ]` *rewrites* using the step equation `n + (m+1) = (n + m) + 1`. It finds
+    `0 + (k + 1)` on the left and replaces it, turning the goal into `⊢ (0 + k) + 1 = k + 1`.
+  - `rw [ih]` rewrites `0 + k` into `k` (that's what `ih` says), giving `⊢ k + 1 = k + 1`. `rw`
+    automatically finishes a goal that has become `a = a`, so we're done.
+
+`rw [a, b]` just does the rewrites left to right in sequence. And yes — `simp` or `omega` would have
+closed this in one shot; we did it by hand on purpose, to *see* induction work. Throughout the course
+we reach for the automatic tactics only after we understand what they're doing for us.
+
+## 7. The loop in detail: `sorry`, red, and green
+
+Open `Skeleton.lean`. Each proof is the placeholder `sorry`:
+
+```lean
+theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
+  sorry
+```
+
+`sorry` is Lean's "trust me, I'll do it later" escape hatch — it lets a file compile with a *hole* where
+a proof should be. That's dangerous (a `sorry` proves *anything*), so Lean always warns when one is
+present. We turn that safety-net up to maximum: the first line of every skeleton is
+
+```lean
+set_option warningAsError true
+```
+
+which promotes the `sorry` warning to a hard **error**. So:
+
+- Untouched skeleton → the `sorry`s are errors → `make lab` is **red**.
+- You replace each `sorry` with a real proof → no warnings → it compiles → **green**.
+
+When you're stuck, the error messages and the goal state are your guides. A few editor tools worth
+knowing from day one (in VS Code with the Lean extension, the goal shows in the *Infoview* panel):
+
+```lean
+#check @and_swap     -- show the type/signature of something
+#eval 2 + 2          -- run a computation and print the result (here: 4)
+example : 0 + 5 = 5 := by exact?   -- ask Lean to search its library for a proof
+```
+
+`exact?`, `apply?`, and `rw?` are search tactics — when you don't know the next step, they suggest one.
+`example` lets you state a throwaway goal to experiment without naming a theorem.
+
+## 8. The honesty rule
+
+Because `sorry` (and, separately, declaring your own `axiom`) can "prove" things by *assuming* them, we
+guard against both. Every keystone proof is audited with:
+
+```lean
+#print axioms and_swap     -- ⇒ 'and_swap' does not depend on any axioms
+#print axioms zero_add'    -- ⇒ 'zero_add'' does not depend on any axioms
+```
+
+`#print axioms T` lists every axiom `T` ultimately relies on. A finished proof here depends on *none*.
+Some perfectly legitimate proofs later will list Lean's three accepted axioms — `propext`,
+`Classical.choice`, `Quot.sound` (roughly: propositions with the same truth-content are equal; you can
+choose elements from non-empty sets; quotients behave well). Those are fine. The one thing that must
+**never** appear is `sorryAx` — the fingerprint of a `sorry`. The command
+
+```bash
+make axioms
+```
+
+scans the whole course for stray `sorry`, ad-hoc `axiom`, and any `sorryAx` in a keystone, and fails if
+it finds one. It is the precise, mechanical version of "never fudge the oracle."
+
+## 9. Prove it
+
+Open `Skeleton.lean`, replace each `sorry` with a real proof, and check with:
+
+```bash
+make lab C=00-foundations/00-setup
+```
+
+The three goals:
+
+1. **`and_swap (p q : Prop) (h : p ∧ q) : q ∧ p`** — swap a conjunction.
+2. **`two_plus_two : 2 + 2 = 4`**.
+3. **`zero_add' (n : Nat) : 0 + n = n`** — your first induction.
+
+Try each one **cold** before reading on — that small struggle is where the learning is, and the skeleton
+deliberately gives you nothing but the statement. Everything you need was built in §3–§8. If you get
+stuck, §10 below has *graduated* hints (take the smallest that unblocks you), and `Solution.lean` has the
+finished proofs — read those to understand *why*, never just to copy.
+
+## 10. Hints for the skeleton
+
+**`and_swap`.** You're handed a proof of `p ∧ q` and must produce one of `q ∧ p`.
+
+- *Nudge:* §4 covered both halves of this — how to take a conjunction *apart*, and how to put one
+  *together*. You only need to combine those two moves.
+- *More:* a single term `⟨_, _⟩` does it; or in tactic mode, `constructor` then close each part with `exact`.
+
+**`two_plus_two`.** This is about *specific* numbers, not a variable.
+
+- *Nudge:* don't reason about addition at all — let the kernel compute both sides. Which one-word tactic
+  from §5 does exactly that?
+
+**`zero_add'`.** The variable `n` is precisely what blocks a direct `rfl`.
+
+- *Nudge:* re-read §6 — it explains why `rfl` is stuck here, and which tactic to reach for instead.
+- *More:* `induction n with | zero => ?_ | succ k ih => ?_` (each `?_` is a case for you to fill). The
+  base case computes on its own; the step needs one rewrite by the `+`/successor step-equation, then the
+  induction hypothesis `ih`.
+
+## 11. Exercises (optional, for fluency)
+
+Try these in a scratch file or by adding `example`s. They reinforce today's ideas:
+
+1. Prove `or_swap (p q : Prop) (h : p ∨ q) : q ∨ p`. *Hint:* a proof of `∨` is built with `Or.inl` /
+   `Or.inr`, and taken apart with `cases h with | inl hp => ... | inr hq => ...`. (Unlike `∧`, you must
+   handle *both* ways the "or" could have been made.)
+2. Prove `add_zero' (n : Nat) : n + 0 = n`. *Hint:* recall §6 — which side is the definition?
+   How short can the proof be?
+3. Prove `succ_eq (n : Nat) : n + 1 = Nat.succ n`. *Hint:* `rfl` may already work — why?
+
+## 12. Corrections to the optional exercises
+
+Work them yourself first — then check. Each is explained, not just dropped.
+
+### Exercise 1 — `or_swap`
+
+```lean
+theorem or_swap (p q : Prop) (h : p ∨ q) : q ∨ p := by
+  cases h with
+  | inl hp => exact Or.inr hp
+  | inr hq => exact Or.inl hq
+```
+
+The contrast with `and_swap` is the whole point. A proof of `p ∧ q` carries *both* a `p` and a `q`, so
+in §4 we just reached in with `.1` and `.2` and grabbed them. A proof of `p ∨ q` carries only *one* of
+the two — and we don't get to know which. So we can't project; we must **branch on the possibilities**.
+That's what `cases h` does: it asks "how was this `∨` value built?" and gives us one sub-goal per answer.
+
+- `Or` has two constructors: `Or.inl : p → p ∨ q` ("it was the left one") and `Or.inr : q → p ∨ q`
+  ("the right one"). `cases h with | inl hp => … | inr hq => …` makes a branch for each, naming the
+  proof it carries `hp : p` (resp. `hq : q`).
+- In the `inl hp` branch we have `hp : p` and must prove `q ∨ p`. Here `p` is the *right* disjunct, so
+  we build the result with `Or.inr hp`. In the `inr hq` branch, `q` is the *left* disjunct, so `Or.inl hq`.
+
+Notice the mirroring: a value that came in on the left goes out on the right, and vice versa — exactly
+what "swap" should do.
+
+Once you trust the standard library, there's a one-liner — `Or.symm` is "commutativity of or," already
+proved for you:
+
+```lean
+theorem or_swap' (p q : Prop) (h : p ∨ q) : q ∨ p := h.symm
+```
+
+Reaching for an existing lemma instead of re-deriving it is the normal way to work in Lean. But building
+it by hand once, as above, is how you understand what that lemma *is*.
+
+### Exercise 2 — `add_zero'`
+
+```lean
+theorem add_zero' (n : Nat) : n + 0 = n := rfl
+```
+
+This is the free direction. `Nat.add` is defined by `n + 0 = n` (the base equation from §6), so `n + 0`
+and `n` are *the same term by definition* — even with `n` an unknown variable, because the equation
+fires purely on the second argument being literally `0`. No induction, no rewriting: `rfl`. Contrast
+`zero_add'` in §6, where the recursion is stuck on a variable and induction is unavoidable. Same-looking
+statements, opposite difficulty — and the definition is what tells them apart.
+
+### Exercise 3 — `succ_eq`
+
+```lean
+theorem succ_eq (n : Nat) : n + 1 = Nat.succ n := rfl
+```
+
+Also `rfl`, and unfolding *why* is satisfying. The numeral `1` is `Nat.succ 0`, so `n + 1` is really
+`n + Nat.succ 0`. The step equation `n + (m+1) = (n + m) + 1` rewrites that to `Nat.succ (n + 0)`, and
+`n + 0` is `n` by the base equation — so `n + 1` reduces, definitionally, all the way down to
+`Nat.succ n`. The kernel performs that reduction silently, and `rfl` closes the goal. This is also why
+Lean happily lets you write `n + 1` and `Nat.succ n` interchangeably: to the kernel they are *the same
+number*.
+
+> Audit your work with `#print axioms or_swap` (and the others) — each should report it depends on no
+> axioms, just like the keystones in §8.
+
+## 13. Going further
+
+- **Natural Number Game** — `../references/NNG4`, or play in the browser at
+  [adam.math.hhu.de](https://adam.math.hhu.de). Do the *Tutorial* and *Addition* worlds next; that's our
+  Course 0.1, and it drills exactly the tactics above (`rfl`, `rw`, `induction`).
+- **Theorem Proving in Lean 4** — `../references/theorem_proving_in_lean4`, chapters 2–3, for
+  "propositions as types" in full and a complete tour of the basic tactics.
+
+Once `make lab C=00-foundations/00-setup` is green and `make axioms` is clean, you've completed
+**Milestone M0** — the loop works, and you've felt every part of it. On to Course 0.1.

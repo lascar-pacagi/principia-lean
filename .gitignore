@@ -1,0 +1,22 @@
+# Vendored reference books (NNG4, logic_and_proof, TPIL, MIL) — each carries its own .git;
+# read-only, not our work. Keep only our provenance note.
+/references/*
+!/references/README.md
+
+# Lean build artifacts & toolchains
+**/.lake/
+**/lake-packages/
+
+# Quarto / Typst render byproducts — regenerable via `make explainer` / `make docs`
+# (we commit the .qmd sources and the figs/, not the rendered output)
+**/.quarto/
+**/explainer_files/
+**/*.typ
+**/*.html
+**/*.pdf
+
+# Local agent / editor / OS junk
+/.claude/
+.DS_Store
+**/.DS_Store
+*.swp

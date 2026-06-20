@@ -1,0 +1,150 @@
+---
+title: "1.6 — Completeness: closing the loop  (⊢ ⟺ ⊨)"
+---
+
+> **Where you are.** Soundness (1.4) gave `⊢ → ⊨`: proofs don't lie. This slice proves the converse,
+> **completeness** `⊨ → ⊢`: proofs miss nothing. Put together, `⊢ ⟺ ⊨` — *provable* and *true* are the
+> same notion, viewed two ways. This is the final slice of Course 1 and its hardest result. The
+> construction (Kalmár's method) lives in `Principia.NatDed.Kalmar`; you assemble the theorem.
+
+## 1. The question
+
+The slice-1.5 prover was *incomplete*: it said "no" to `(p ⋏ q) ⇒ p` even though that's valid, because it
+never tried elimination. Is that a fundamental limit, or just a weak search? Completeness answers: **it's
+just a weak search.** *Every* tautology has *some* derivation. So validity (checkable by truth tables) and
+provability coincide, and "find a proof" is, in principle, always possible for a valid formula.
+
+## 2. What completeness says, and why it's the keystone
+
+```lean
+def completeness {φ} (h : Tautology φ) : [] ⊢ φ
+theorem provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ
+```
+
+`completeness` turns a *semantic* fact (true under every valuation) into a *syntactic* object (a
+derivation). With soundness it gives the equivalence `provable_iff_tautology`: **`⊢ ⟺ ⊨`**. Consequences:
+
+- **A certified decision procedure.** `taut?` (slice 1.2) decides validity by truth tables; completeness
+  says a valid formula is provable, soundness says a provable one is valid — so the truth-table answer is
+  exactly the provability answer, and either certifies the other.
+- **The prover's "no" gets meaning.** A complete search *must* exist (completeness constructs one); a
+  "not provable" therefore really means "not valid."
+
+## 3. Kalmár's method
+
+We avoid the usual heavy machinery (maximal consistent sets, choice). The idea is elementary and lives
+in three pieces (all in `Principia.NatDed.Kalmar`, worth reading):
+
+**Literal contexts.** For a valuation `v`, `litCtx v n` is the list of *literals* describing `v` on atoms
+`0..n-1`: atom `i` contributes `var i` if `v i = true`, else `∼(var i)`. It's the set of assumptions that
+"pin down" `v`.
+
+**Kalmár's lemma.** For any `φ` (atoms `< n`):
+```lean
+kalmar v n φ _ : (eval v φ = true → litCtx v n ⊢ φ) × (eval v φ = false → litCtx v n ⊢ ∼φ)
+```
+From the literals of `v`, you can *derive* `φ` if `v` makes it true, or `∼φ` if false. Proved by induction
+on `φ`, with one *derived rule* per connective × sign (e.g. "from `∼a` derive `∼(a ⋏ b)`", "from `b` derive
+`a ⇒ b`") — the lemmas `notAnd_left`, `imp_of_right`, … in the `Kalmar` module. The atom case is just the
+literal sitting in the context.
+
+**Variable elimination.** If `φ` is a tautology, `eval v φ = true` for *every* `v`, so by Kalmár *every*
+literal context proves `φ`. Now collapse them:
+```lean
+elim n φ : (∀ v, litCtx v n ⊢ φ) → ([] ⊢ φ)
+```
+`elim` peels atoms off one at a time. To remove atom `n` from `litCtx v (n+1)`: the two valuations agreeing
+with `v` below `n` but sending `n` to `true`/`false` give derivations from `var n :: litCtx v n` and
+`∼(var n) :: litCtx v n`; **`byCasesD`** (proof by cases on `var n ∨ ∼(var n)`, i.e. excluded middle in
+context) combines them into one from `litCtx v n`. Recurse down to `[]`. Excluded middle — derivable here
+because the system is classical (`raa`) — is exactly what powers the case split.
+
+## 4. The assembly
+
+With those given, completeness is one line: take `n = maxVar φ` (covering all of `φ`'s atoms); for each `v`,
+`kalmar` (fed `h v : eval v φ = true`) proves `φ` from `litCtx v n`; `elim` collapses to `[]`.
+
+```lean
+noncomputable def completeness {φ} (h : Tautology φ) : [] ⊢ φ :=
+  elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))
+```
+
+(It's `noncomputable` only because it's built via the recursor — we use it as an *existence* result, not
+to run.) The equivalence then pairs it with soundness:
+
+```lean
+theorem provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ :=
+  ⟨fun ⟨d⟩ => tautology_of_proof d, fun h => ⟨completeness h⟩⟩
+```
+
+And now completeness delivers what the prover couldn't:
+
+```lean
+example : Nonempty ([] ⊢ ((var 0 ⋏ var 1) ⇒ var 0)) :=
+  ⟨completeness (by intro v; simp only [eval]; cases v 0 <;> cases v 1 <;> rfl)⟩
+```
+
+The slice-1.5 search returned `none` for this; completeness builds the derivation. (We wrap it in
+`Nonempty` because `completeness` is `noncomputable` — an existence witness, not something we run.)
+
+## 5. Prove it
+
+The machinery is imported. Assemble the two results (`make lab C=01-natural-deduction/06-completeness`):
+
+1. `completeness {φ} (h : Tautology φ) : [] ⊢ φ`
+2. `provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ`
+
+§4 is the walkthrough. Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `completeness`.** *Nudge:* feed `elim` (at `n = φ.maxVar`) a function that, for each `v`, returns a
+proof of `φ` from `litCtx v n`. The `.1` projection of `kalmar` needs `eval v φ = true` — and `h v` is
+exactly that (`Tautology` is `∀ v, eval v φ = true`). *More:*
+`elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))`. (Use `Nat.le_refl _`, not
+`le_refl` — the latter is Mathlib-only.)
+
+**2 `provable_iff_tautology`.** *Nudge:* `constructor` (or an anonymous `⟨_, _⟩`). Forward: destructure the
+`Nonempty` to a derivation and apply `tautology_of_proof`. Backward: apply `completeness` and wrap in
+`Nonempty.intro`. *More:* `⟨fun ⟨d⟩ => tautology_of_proof d, fun h => ⟨completeness h⟩⟩`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Get a proof from a truth table.** Prove `[] ⊢ (var 0 ⇒ (var 1 ⇒ var 0))` by `completeness`, supplying
+   a proof that the formula is a tautology. *Hint:* `completeness (by intro v; simp only [eval]; cases v 0
+   <;> cases v 1 <;> rfl)`.
+2. **Conceptual.** Using `provable_iff_tautology`, explain in a sentence why a *complete* prover is possible
+   in principle (unlike the slice-1.5 one), and what it would return for an invalid formula.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — a proof, conjured from validity
+
+```lean
+example : Nonempty ([] ⊢ (Form.var 0 ⇒ (Form.var 1 ⇒ Form.var 0))) :=
+  ⟨completeness (by intro v; simp only [eval]; cases v 0 <;> cases v 1 <;> rfl)⟩
+```
+
+We never wrote a derivation tree — we proved the formula is *valid* (the truth table is all `true`, checked
+by the four-way `cases`), and `completeness` produced a derivation from that. Validity in, proof out. This
+is `K` (slice 1.3's `dK`), now obtained semantically.
+
+### Exercise 2 — why a complete prover exists
+
+`provable_iff_tautology` says `Nonempty ([] ⊢ φ) ↔ Tautology φ`. Since `Tautology φ` is *decidable* (run
+the truth table, e.g. `taut?`), provability is decidable too: a complete prover can decide validity and,
+on a *yes*, hand back the derivation `completeness` constructs; on a *no*, the formula is genuinely invalid
+(it has a falsifying valuation), so no derivation exists — and reporting "unprovable" is now correct, not a
+mere search failure. The slice-1.5 prover lacked this guarantee; completeness supplies it.
+
+## 9. Going further — Course 1 is complete
+
+You've built a verified theorem prover for natural deduction: a syntax (`Form`), a semantics (`⊨`), a
+proof system (`⊢`), a search (`prove`), and **both** metatheorems — soundness and completeness — closing
+`⊢ ⟺ ⊨`. That's the whole arc of Course 1.
+
+- **FOL stretch (1.7).** The data structures were kept first-order-ready (`var : Nat`). Lifting `Form` to
+  terms + quantifiers and re-running soundness is tractable; *completeness* for FOL is a serious
+  undertaking (Henkin construction) — see `references` (FFL-Foundation) for a full Lean account.
+- **Next: Course 2 — a resolution prover.** Prover #2, refutation-based, the bridge to SAT. It reuses this
+  course's `Logic` (syntax + semantics) and proves its own soundness and refutation-completeness.

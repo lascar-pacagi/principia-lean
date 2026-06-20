@@ -1,0 +1,22 @@
+project:
+  type: default
+  render:
+    - "**/explainer.qmd"      # the lessons only (not GUIDE/README)
+
+# No output-dir → Quarto renders each lesson IN PLACE, next to its explainer.qmd:
+#   NN-concept/explainer.html   and   NN-concept/explainer.pdf
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    highlight-style: github
+    html-math-method: mathjax
+    embed-resources: true     # one self-contained .html (no _files/ sidecar dir)
+  typst:                       # PDF via Quarto's bundled Typst engine — no LaTeX needed
+    toc: true
+    papersize: a4
+
+# Lean code blocks are illustrative and NOT executed by Quarto — use plain ```lean fences.
+# (The kernel checks the real .lean files; the explainer just shows them.)

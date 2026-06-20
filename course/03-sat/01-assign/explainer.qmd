@@ -1,0 +1,115 @@
+---
+title: "3.1 — Assignments and the `assign` operation"
+---
+
+> **Where you are.** Course 2 built resolution (refutation-based). Course 3 builds a **SAT solver** — the
+> DPLL/CDCL family, the practical workhorse. It searches for a *model* by committing to literals and
+> simplifying. This slice defines that simplification, `assign`, and proves the invariant that makes the
+> search correct: **assigning preserves satisfiability**. We reuse Course 2's clause representation; code
+> graduates into `Principia.Sat.Basic`.
+
+## 1. The question
+
+A SAT solver decides whether a clause set has a model, ideally producing one. The core idea (DPLL): pick
+a literal `l`, *guess* it true, and simplify the problem; recurse; if that fails, guess `l` false. The
+simplification must (a) be smaller and (b) faithfully reflect the guess. That operation is `assign`.
+
+## 2. The `assign` operation
+
+Committing to "`l` is true":
+
+```lean
+def assign (cnf : Cnf) (l : Lit) : Cnf :=
+  (cnf.filter (fun c => decide (l ∉ c))).map (fun c => c.erase l.neg)
+```
+
+Two moves, both justified by `l` being true:
+
+- **Drop clauses containing `l`** — they're already satisfied (`filter` keeps the clauses *without* `l`).
+- **Erase `∼l` from the rest** — `∼l` is now false, so it can't help satisfy a clause (`map (·.erase
+  l.neg)`).
+
+```lean
+#eval assign [[⟨0,true⟩, ⟨1,true⟩], [⟨0,false⟩], [⟨2,true⟩]] ⟨0,true⟩   -- [[], [+2]]
+```
+
+Here `[+0,+1]` is dropped (contains `+0`), `[-0]` loses its only literal → `□`, and `[+2]` is untouched.
+The appearance of `□` signals that committing to `+0` made a clause unsatisfiable — the solver will
+backtrack. Notice `assign cnf l` uses one fewer variable (`l`'s) than `cnf`, so a search that keeps
+assigning terminates.
+
+## 3. The invariant: assigning preserves satisfiability
+
+The fact that lets DPLL reconstruct a model:
+
+```lean
+theorem sat_of_assign v cnf l (hl : l.eval v = true)
+    (h : Cnf.eval v (assign cnf l) = true) : Cnf.eval v cnf = true
+```
+
+*If `v` makes `l` true and satisfies the simplified CNF, it satisfies the original.* So once the search
+finds a model of the simplified problem, adding the guess `l = true` gives a model of the original. The
+proof checks each clause `c` of `cnf`: if `c` contains `l`, it's satisfied (by `hl`); otherwise `c` was
+kept, its erased form `c.erase l.neg` is in `assign cnf l` and satisfied, and **erasing only weakens** a
+clause — `eval_of_erase` — so `c` itself is satisfied.
+
+```lean
+theorem eval_of_erase v c x (h : Clause.eval v (c.erase x) = true) : Clause.eval v c = true
+```
+
+(A satisfying literal of `c.erase x` is still a literal of `c`, since `erase` only removes.)
+
+## 4. Prove it
+
+`assign` is given. Prove (`make lab C=03-sat/01-assign`):
+
+1. `eval_of_erase v c x : Clause.eval v (c.erase x) = true → Clause.eval v c = true`
+2. `sat_of_assign v cnf l : l.eval v = true → Cnf.eval v (assign cnf l) = true → Cnf.eval v cnf = true`
+
+§3 is the walkthrough. Try cold; §5 has hints.
+
+## 5. Hints for the skeleton
+
+**1 `eval_of_erase`.** *Nudge:* unfold `Clause.eval` to `List.any … = true ↔ ∃ lit ∈ …`; the witnessing
+literal of `c.erase x` is also in `c` (`List.mem_of_mem_erase`). *More:* `rw [Clause.eval,
+List.any_eq_true] at h ⊢; obtain ⟨lit, hmem, hlit⟩ := h; exact ⟨lit, List.mem_of_mem_erase hmem, hlit⟩`.
+
+**2 `sat_of_assign`.** *Nudge:* `rw [Cnf.eval, List.all_eq_true] at h ⊢; intro c hc`, then split on whether
+`l ∈ c` (`cases hlc : decide (l ∈ c)`). If `l ∈ c`, the clause holds by `hl`. If not, the clause was kept:
+`c.erase l.neg ∈ assign cnf l` (unfold `assign`; `List.mem_map`, `List.mem_filter`), so it's satisfied by
+`h`, and `eval_of_erase` lifts that to `c`.
+
+## 6. Exercises (optional, for fluency)
+
+1. **Predict and check.** What is `assign [[⟨0,true⟩], [⟨0,false⟩, ⟨1,true⟩]] ⟨0,true⟩`? Work it out, then
+   `#eval` it.
+2. **Conceptual.** Why does `assign` preserve satisfiability *only* for valuations that make `l` true (the
+   `hl` hypothesis)? Give a clause set and valuation where dropping it would fail.
+
+## 7. Corrections to the optional exercises
+
+### Exercise 1 — computing an `assign`
+
+```lean
+#eval assign [[⟨0,true⟩], [⟨0,false⟩, ⟨1,true⟩]] ⟨0,true⟩   -- ⇒ [[+1]]
+```
+
+`[+0]` contains `+0`, so it's dropped (satisfied by the guess). `[-0, +1]` is kept (no `+0`); erasing
+`∼(+0) = -0` leaves `[+1]`. Result: `[[+1]]` — the problem reduced to "now make `q` true."
+
+### Exercise 2 — why `l` must be true
+
+`assign` *assumes* `l` is true: it discards clauses containing `l` (justified only if `l` holds) and
+erases `∼l` (false only if `l` holds). Take `cnf = [[+0]]` (i.e. `{p}`) and `v` with `v 0 = false`. Then
+`assign cnf (+0) = []` (the clause is dropped), which `v` "satisfies" (`Cnf.eval v [] = true`) — but `v`
+does *not* satisfy `cnf` (`p` is false). The implication only holds with `hl : (+0).eval v = true`, which
+fails here. That's exactly why DPLL records the guess: a model of the simplified problem is a model of the
+original *together with the committed literal*.
+
+## 8. Going further
+
+- **Next: slice 3.2 — DPLL.** The solver itself: if there are no clauses, SAT (`[]`); if `□` appears,
+  this branch is UNSAT; otherwise pick a literal and branch on `assign cnf l` / `assign cnf l.neg`.
+  `sat_of_assign` is what makes the model it returns correct (slice 3.3).
+- **Unit propagation & pure literals** are `assign` applied with a smart choice of `l` (a literal forced
+  by a unit clause, or one of a single polarity) — the optimisations that make DPLL fast.

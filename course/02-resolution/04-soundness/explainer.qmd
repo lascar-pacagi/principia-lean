@@ -1,0 +1,132 @@
+---
+title: "2.4 — Resolution soundness: □ means unsatisfiable"
+---
+
+> **Where you are.** Slices 2.2–2.3 derive and search for the empty clause `□`. But does reaching `□`
+> actually *mean* the clause set is unsatisfiable? This slice proves it — **soundness**: `Refut S [] →
+> S.Unsat`. With it, the prover's "yes" is correct, and (via slice 2.1's bridge) resolution becomes a
+> genuine proof method for validity. Code graduates into `Principia.Resolution.Soundness`.
+
+## 1. The question
+
+`□` is satisfiable by no valuation. So if we can *derive* `□` from `S` using only sound steps, `S` cannot
+have a model either — any model of `S` would have to model `□`, which is impossible. The whole argument
+rests on a single fact: **each resolution step is sound** — the resolvent holds whenever its two parents
+do. Establish that, induct over the derivation, and soundness follows.
+
+## 2. What soundness says
+
+```lean
+theorem refut_unsat {S} (d : Refut S []) : S.Unsat
+theorem taut_of_refut {φ} (d : Refut (toCnf false φ) []) : Form.Tautology φ
+```
+
+`refut_unsat` is the keystone; `taut_of_refut` chains it with slice 2.1's `taut_iff_cnf_unsat` to close
+the loop *to validity*: a refutation of the clauses of `∼φ` certifies that `φ` is a tautology.
+
+## 3. The engine: the resolvent preserves models
+
+```lean
+theorem resolvent_sound v c d l (hc : Clause.eval v c) (hd : Clause.eval v d) :
+    Clause.eval v (resolvent c d l)
+```
+
+Proof (given): `resolvent c d l = c.erase l ++ d.erase l.neg`, so its value is `Clause.eval v (c.erase
+l) || Clause.eval v (d.erase l.neg)`. Case on `l` under `v`:
+
+- **`l` false.** `c` has a true literal; it isn't `l` (which is false), so it survives `c.erase l`
+  (`erase_eval`). The left disjunct is true.
+- **`l` true.** Then `∼l` is false (`Lit.neg_eval`). `d` has a true literal; it isn't `∼l`, so it
+  survives `d.erase l.neg`. The right disjunct is true.
+
+The helper `erase_eval` ("a satisfied clause stays satisfied after erasing a *false* literal") is exactly
+"the witnessing literal differs from the erased one, so it isn't removed." These are given to you.
+
+## 4. From a step to the whole tree
+
+A refutation is a tree of `hyp`/`res`, so soundness is **induction on the refutation** — the same shape
+as Course 1's `soundness`:
+
+```lean
+theorem refut_sound {S} : ∀ {c}, Refut S c → ∀ v, Cnf.eval v S = true → Clause.eval v c = true := by
+  intro c d
+  induction d with
+  | hyp h => intro v hS; rw [Cnf.eval] at hS; exact List.all_eq_true.mp hS _ h   -- a clause of S is true in a model of S
+  | res l dc dd ihc ihd => intro v hS; exact resolvent_sound v _ _ l (ihc v hS) (ihd v hS)
+```
+
+Every clause the resolution proof derives is true in every model of `S`. The keystone is the `c = []`
+instance: `□` is true in no valuation, so a model of `S` is impossible.
+
+```lean
+theorem refut_unsat {S} (d : Refut S []) : S.Unsat := by
+  intro v
+  cases hv : Cnf.eval v S with
+  | false => rfl
+  | true  => have := refut_sound d v hv; simp [Clause.eval] at this   -- `□` satisfied — contradiction
+```
+
+## 5. Prove it
+
+The per-step lemmas are given. Prove the three results (`make lab C=02-resolution/04-soundness`):
+
+1. `refut_sound` — induction on the refutation.
+2. `refut_unsat` — the soundness keystone.
+3. `taut_of_refut` — chain with the slice-2.1 bridge.
+
+§3–§4 are the walkthrough. Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `refut_sound`.** *Nudge:* `intro c d; induction d with | hyp h => … | res l dc dd ihc ihd => …`.
+`hyp`: a clause of `S` is true in any model of `S` (`rw [Cnf.eval] at hS`; then `List.all_eq_true.mp hS _
+h`). `res`: apply `resolvent_sound` to the two induction hypotheses. *More:* see §4 verbatim.
+
+**2 `refut_unsat`.** *Nudge:* `intro v; cases hv : Cnf.eval v S`. The `false` branch is `rfl`; in the
+`true` branch, `refut_sound d v hv` says `□` is satisfied — `simp [Clause.eval] at` it for the
+contradiction.
+
+**3 `taut_of_refut`.** *Nudge:* it's `(taut_iff_cnf_unsat φ).mpr` applied to `refut_unsat d`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Certify unsatisfiability.** Show `Cnf.Unsat [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]]`
+   using `refut_unsat` and the two-step refutation of `{p∨q, ¬p, ¬q}` from slice 2.2. (Write
+   `Cnf.Unsat […]`, not `(… : Cnf).Unsat` — the `Cnf` abbreviation unfolds to `List`, so dot notation
+   would look for `List.Unsat`.)
+2. **Conceptual.** In `resolvent_sound`, why does the proof split on the truth value of the resolved
+   literal `l`, and why is exactly one parent's surviving literal guaranteed in each case?
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — certify `{p∨q, ¬p, ¬q}` unsatisfiable
+
+```lean
+example : Cnf.Unsat [[⟨0,true⟩,⟨1,true⟩], [⟨0,false⟩], [⟨1,false⟩]] :=
+  refut_unsat
+    (.res ⟨1,true⟩
+      (.res ⟨0,true⟩ (.hyp (c := [⟨0,true⟩,⟨1,true⟩]) (by decide)) (.hyp (c := [⟨0,false⟩]) (by decide)))
+      (.hyp (c := [⟨1,false⟩]) (by decide)))
+```
+
+The hand-built refutation from slice 2.2 *is* a value of `Refut S []`; `refut_unsat` turns it into the
+semantic fact `S.Unsat`. (You could equally let `refute?` find the refutation and feed `Option.get` to
+`refut_unsat`.)
+
+### Exercise 2 — why split on `l`
+
+The resolvent keeps the non-`l` part of `c` and the non-`∼l` part of `d`; whether those parts are
+satisfied depends on whether `l` (hence `∼l`) is true. If `l` is **false**, `c`'s satisfying literal can't
+be `l`, so it lives in `c.erase l` — the left part holds. If `l` is **true**, then `∼l` is **false**, so
+`d`'s satisfying literal can't be `∼l`, and lives in `d.erase l.neg` — the right part holds. Exactly one
+side is guaranteed in each case, and that's enough for the disjunction. The split is forced by the rule's
+design: resolution cancels a complementary pair precisely because the two literals can't both be true.
+
+## 9. Going further
+
+- **DPLL / CDCL.** Modern SAT solvers are resolution engines in disguise: a CDCL "learned clause" is a
+  resolvent, and the UNSAT certificate (a DRAT/LRAT proof) is a resolution derivation. Soundness like
+  this is what makes such certificates trustworthy — the theme of Course 3.
+- **Next: slice 2.5 — refutation-completeness.** The converse, `S.Unsat → Refut S []`: every
+  unsatisfiable clause set *has* a refutation. This is the hard keystone (a semantic-tree / variable-
+  elimination argument, echoing Course 1's completeness), and it makes the prover's "no" meaningful too.

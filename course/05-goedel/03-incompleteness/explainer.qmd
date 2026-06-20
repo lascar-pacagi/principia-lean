@@ -1,0 +1,147 @@
+---
+title: "5.3 — Gödel's first incompleteness theorem"
+---
+
+> **Where you are.** The summit. In 1931 Gödel showed that *any* consistent formal system rich enough to
+> talk about arithmetic must leave some true statement unproved — mathematics cannot be reduced to a
+> complete set of mechanical rules. We prove the **abstract first incompleteness theorem**: it's the
+> diagonal argument of 5.1, now carrying a *provability* predicate, exactly as Tarski (5.2) carried
+> *truth*. Code graduates into `Principia.Goedel.Incompleteness`.
+
+## 1. The dream that broke
+
+Hilbert's program (1920s) hoped to pin all of mathematics to a single formal system: consistent (proves no
+contradiction) and **complete** (proves or refutes every statement). Gödel ended that hope. The idea is
+breathtakingly simple once you've seen the diagonal: build a sentence that says **"I am not provable."**
+
+## 2. The Gödel sentence
+
+Call it `G`, with the defining property
+
+```
+        True G   ↔   ¬ Prov G          ("G is true exactly when G is unprovable")
+```
+
+This is the diagonal lemma applied to the predicate "is *not* provable." It's the Liar of 5.2 with
+*provable* in place of *true* — and that one change turns a paradox into a theorem. Watch:
+
+```
+   suppose  Prov G  ───soundness──▶  True G  ───(def of G)──▶  ¬ Prov G        ⇒⇐
+   therefore        ¬ Prov G                                   (G is UNPROVABLE)
+   then (def of G)   True G                                    (so G is TRUE)
+   suppose  Prov (¬G) ──soundness──▶ True (¬G) ──▶ ¬ True G    ⇒⇐  (we have True G)
+   therefore        ¬ Prov (¬G)                                (¬G is UNPROVABLE too)
+   ──────────────────────────────────────────────────────────────────────────────
+   G is true, yet neither G nor ¬G is provable      ⟹   the theory is INCOMPLETE
+```
+
+No paradox — just a true sentence the system can't reach.
+
+## 3. The framework
+
+```lean
+structure Theory where
+  Sentence : Type
+  Prov  : Sentence → Prop                       -- provable in the theory (meta-level)
+  True_ : Sentence → Prop                        -- semantic truth
+  neg   : Sentence → Sentence
+  neg_true : ∀ s, True_ (neg s) ↔ ¬ True_ s
+  sound : ∀ s, Prov s → True_ s                  -- SOUNDNESS: the theory proves only truths
+  goedel_sentence : ∃ G, True_ G ↔ ¬ Prov G      -- the diagonal lemma's output
+```
+
+Two honest assumptions carry the theorem. **Soundness** is what lets a provable sentence be cashed into a
+true one (we use the *semantic* version of incompleteness — clean, and enough to make the point).
+**`goedel_sentence`** is the self-referential sentence. Its *existence* is exactly the diagonal lemma for
+the provability predicate — and producing it for a *concrete* theory is the famous **arithmetisation**:
+Gödel-numbering formulas and proofs so that "x is a proof of y" becomes an arithmetic relation, then
+diagonalising. That construction is long and delicate (it's what large developments like FFL-Foundation /
+`Mathlib` build); we take its result as a field and derive the consequence — the logical heart, honestly
+scoped.
+
+## 4. The proof
+
+```lean
+theorem incompleteness (T : Theory) : ∃ G, ¬ T.Prov G ∧ T.True_ G ∧ ¬ T.Prov (T.neg G) := by
+  obtain ⟨G, hG⟩ := T.goedel_sentence
+  have hnp : ¬ T.Prov G := fun hp => (hG.mp (T.sound G hp)) hp
+  have htrue : T.True_ G := hG.mpr hnp
+  exact ⟨G, hnp, htrue, fun hpn => (T.neg_true G).mp (T.sound _ hpn) htrue⟩
+```
+
+Line by line, this *is* the §2 diagram:
+
+- `hnp` — assume `Prov G`; `sound` gives `True G`; `hG.mp` turns that into `¬ Prov G`, contradicting the
+  assumption. So `¬ Prov G`.
+- `htrue` — feed `¬ Prov G` back through `hG.mpr`: `True G`. The Gödel sentence is true.
+- last — assume `Prov (neg G)`; `sound` gives `True (neg G)`; `neg_true` turns that into `¬ True G`,
+  contradicting `htrue`. So `¬ Prov (neg G)`.
+
+Three facts, neither `G` nor `¬G` provable: **incompleteness**, kernel-checked and axiom-free.
+
+## 5. Prove it
+
+The `Theory` framework is given. Prove (`make lab C=05-goedel/03-incompleteness`):
+
+- `incompleteness (T : Theory) : ∃ G, ¬ T.Prov G ∧ T.True_ G ∧ ¬ T.Prov (T.neg G)`
+
+§4 walks every line; §6 has hints.
+
+## 6. Hints for the skeleton
+
+*Nudge:* `obtain ⟨G, hG⟩ := T.goedel_sentence` (so `hG : True_ G ↔ ¬ Prov G`). Build `hnp : ¬ T.Prov G` as
+`fun hp => (hG.mp (T.sound G hp)) hp` (provable ⇒ true ⇒ unprovable, applied to the assumption). Then
+`htrue : T.True_ G := hG.mpr hnp`. Assemble `⟨G, hnp, htrue, ?_⟩`; the last goal `¬ T.Prov (T.neg G)` is
+`fun hpn => (T.neg_true G).mp (T.sound _ hpn) htrue`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **Where is soundness used — twice?** Identify both uses and say what each buys.
+2. **Consistency, not soundness.** Gödel's *original* uses only consistency (plus ω-consistency), not
+   semantic soundness. What did we trade for the shorter proof, and why is "sound ⇒ consistent" the easy
+   direction?
+3. **The second theorem.** Gödel II says a consistent theory can't prove *its own* consistency. Sketch how
+   it follows from the first (hint: formalise the §2 reasoning "if `Prov G` then contradiction" *inside*
+   the theory).
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — the two uses of soundness
+
+First in `hnp`: `T.sound G hp` converts the assumed `Prov G` into `True G`, which the Gödel equivalence
+then flips to `¬ Prov G` — the contradiction that makes `G` unprovable. Second in the last component:
+`T.sound _ hpn` converts an assumed `Prov (neg G)` into `True (neg G)`, i.e. `¬ True G`, contradicting the
+established `True G`. Both times soundness is the bridge *provability → truth* that lets the diagonal bite.
+
+### Exercise 2 — consistency vs soundness
+
+We used **soundness** (proves only *true* things), a *semantic* assumption, to get the clean "true but
+unprovable." Gödel's syntactic version weakens this to **consistency** (proves no contradiction) plus
+**ω-consistency**, and concludes "neither provable nor refutable" *without* mentioning truth — more general
+(it doesn't presume a standard model) but more work. The trade: our proof is four lines; the syntactic one
+needs the derivability conditions on `Prov`. And "sound ⇒ consistent" is easy: a sound theory's theorems
+are all true, and `φ ∧ ¬φ` is never true, so no contradiction is provable.
+
+### Exercise 3 — the second incompleteness theorem
+
+The first theorem's argument "if `G` were provable, the theory is inconsistent" is itself a piece of
+finitary reasoning. If the theory can *formalise* that argument (the **Hilbert–Bernays–Löb derivability
+conditions** let it), then inside the theory `Con → ¬Prov(G)`, i.e. `Con → G` (using `G ↔ ¬Prov G`). So if
+the theory proved `Con`, it would prove `G` — but `G` is unprovable. Hence it cannot prove `Con`: **no
+consistent, sufficiently strong theory proves its own consistency.** It's the first theorem, reflected
+inward.
+
+## 9. Going further — and the journey's end
+
+- **Arithmetisation.** The one piece we assumed, `goedel_sentence`, is discharged by Gödel numbering: code
+  symbols → numbers → formulas → proofs, show "is-a-proof-of" is arithmetic, and diagonalise. That is the
+  long technical road (representability in Robinson's Q, the β-function, the fixed-point lemma) — the
+  natural sequel, and what research-grade Lean developments formalise.
+- **The unity.** Cantor, Russell, the Liar, Turing, Tarski, Gödel I, Gödel II — in this course they are
+  literally *one theorem* (`lawvere` / `no_self_neg`) seen through different substitutions: surjections,
+  sets, truth, halting, provability. That is the deepest lesson of Course 5.
+- **`Principia`, complete.** From `True`/`False` and a first `theorem` (Course 0) you have built: two
+  verified provers (natural deduction with soundness *and* completeness; resolution), a SAT toolkit (DPLL +
+  CDCL + a verified UNSAT checker), Euclid's geometry made honest, and the abstract core of Gödel's
+  incompleteness — every line machine-checked by the kernel, every keystone axiom-audited. *Quod erat
+  demonstrandum.*

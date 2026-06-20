@@ -1,0 +1,151 @@
+---
+title: "2.1 — Clauses, CNF, and conversion"
+---
+
+> **Where you are.** Course 1 built a *human-style* prover (natural deduction). Course 2 builds a
+> *machine-style* one: **resolution**, the engine behind SAT and SMT. Resolution doesn't work on arbitrary
+> formulas — it works on **clauses**. This slice sets up clauses, their semantics, and a conversion from
+> `Form`, then proves the conversion faithful and derives the bridge that makes resolution a *proof*
+> method: **a formula is valid exactly when the clauses of its negation are unsatisfiable.** Code
+> graduates into `Principia.Resolution.Cnf`.
+
+## 1. The question
+
+Resolution is *refutation-based*: instead of proving `φ` directly, it assumes `∼φ` and derives a
+contradiction. To do that mechanically it needs a uniform shape — **conjunctive normal form**: an AND of
+ORs of literals. So two things are needed: (a) a data type for clause sets with a notion of
+(un)satisfiability, and (b) a conversion `Form → Cnf` that *preserves meaning*, so refuting the converted
+negation really does prove the original.
+
+## 2. Clauses and CNF
+
+```lean
+structure Lit where               -- a literal: a variable with a polarity
+  var : Nat
+  pol : Bool                       -- true = positive (var), false = negative (¬var)
+abbrev Clause := List Lit          -- a clause is a DISJUNCTION of literals
+abbrev Cnf := List Clause          -- a CNF is a CONJUNCTION of clauses
+```
+
+The semantics read off the structure: a literal is true per its polarity; a clause is true if *some*
+literal is; a clause set is true if *every* clause is.
+
+```lean
+def Lit.eval    v l := if l.pol then v l.var else !(v l.var)
+def Clause.eval v c := c.any (Lit.eval v)     -- ∨ over the literals
+def Cnf.eval    v s := s.all (Clause.eval v)   -- ∧ over the clauses
+```
+
+Two boundary cases matter. The **empty clause `[]`** has no literal to satisfy, so `Clause.eval v [] =
+false` — it is **`□`, the unsatisfiable clause**. The **empty clause set `[]`** is a conjunction of nothing,
+so `Cnf.eval v [] = true` — trivially satisfiable. A clause set is `Unsat` when *no* valuation satisfies
+it: `∀ v, Cnf.eval v s = false`. Deriving `□` will be how resolution witnesses unsatisfiability.
+
+## 3. Converting a formula to CNF
+
+The classic conversion pushes negations inward (to literals) and distributes `∨` over `∧`. We do both at
+once with a **polarity flag** `b`: `toCnf b φ` is a clause set for `φ` if `b = true`, for `∼φ` if `b =
+false`. Carrying `b` down means `¬` never appears as a connective — it only flips a literal's polarity.
+
+```lean
+def toCnf : Bool → Form → Cnf
+  | b, .var n   => [[{var := n, pol := b}]]              -- a single literal, polarity = b
+  | b, .fls     => if b then [[]] else []                 -- ⊥ → □ (false);  ¬⊥ = ⊤ → [] (true)
+  | b, .and a c => if b then toCnf true a ++ toCnf true c  -- a∧c: append the clause sets
+                        else distribute (toCnf false a) (toCnf false c)   -- ¬(a∧c) = ¬a ∨ ¬c
+  | b, .or a c  => if b then distribute (toCnf true a) (toCnf true c)      -- a∨c: distribute
+                        else toCnf false a ++ toCnf false c                 -- ¬(a∨c) = ¬a ∧ ¬c
+  | b, .imp a c => if b then distribute (toCnf false a) (toCnf true c)     -- a⇒c = ¬a ∨ c
+                        else toCnf true a ++ toCnf false c                  -- ¬(a⇒c) = a ∧ ¬c
+```
+
+`distribute s1 s2` is the CNF of `s1 ∨ s2`: pair every clause of `s1` with every clause of `s2` and
+concatenate (`s1.flatMap (fun c1 => s2.map (c1 ++ ·))`). The key fact (given to you as `distribute_eval`)
+is that this computes the disjunction: `Cnf.eval v (distribute s1 s2) = Cnf.eval v s1 || Cnf.eval v s2` —
+the only subtle Boolean step is `(A∨C) ∧ (B∨C) = (A∧B)∨C`.
+
+**Correctness** (`toCnf_eval`, your first goal): `Cnf.eval v (toCnf b φ)` equals `eval v φ` when `b =
+true`, and `!eval v φ` when `b = false`. By induction on `φ`, generalizing `b`; each connective splits on
+`b` and rebuilds with `distribute_eval` / `cnf_eval_append` and the induction hypotheses, finishing with a
+Boolean truth-table check (the De Morgan dualities).
+
+## 4. The bridge: refutation proves validity
+
+Now the payoff (`taut_iff_cnf_unsat`, your second goal):
+
+```lean
+Form.Tautology φ ↔ (toCnf false φ).Unsat
+```
+
+Read it: **`φ` is valid ⟺ the clauses of `∼φ` are unsatisfiable.** It's immediate from `toCnf_eval` at
+`b = false`: `Cnf.eval v (toCnf false φ) = !eval v φ`, which is `false` for *all* `v` exactly when `eval v
+φ = true` for all `v` — i.e. `φ` is a tautology. This is why a *refutation* engine is a *proof* engine: to
+establish `φ`, convert `∼φ` to clauses and show they can't all be satisfied. Course 1 connects too — by
+`provable_iff_tautology`, `⊢ φ` iff `φ` is valid iff `toCnf false φ` is unsatisfiable, so the
+natural-deduction and resolution provers decide the very same problem.
+
+## 5. Prove it
+
+The structures, plumbing, `distribute_eval`, and `toCnf` are given. Prove
+(`make lab C=02-resolution/01-cnf`):
+
+1. `toCnf_eval (v) : ∀ b φ, Cnf.eval v (toCnf b φ) = (if b then eval v φ else !eval v φ)`
+2. `taut_iff_cnf_unsat (φ) : Tautology φ ↔ (toCnf false φ).Unsat`
+
+Try cold; §6 has hints.
+
+## 6. Hints for the skeleton
+
+**1 `toCnf_eval`.** *Nudge:* `intro b φ; induction φ generalizing b` (you need the IH at *both*
+polarities). The `var`/`fls` cases are `cases b <;> simp [toCnf, …, Form.eval]`. For each connective,
+`cases b`, then `simp` with `[toCnf, distribute_eval, cnf_eval_append, iha, ihc, Form.eval]`, and finish
+the leftover Boolean identity with `cases Form.eval v a <;> cases Form.eval v c <;> rfl`. *More:* see the
+shape in §3 — every branch is one `simp` plus a four-row `cases`.
+
+**2 `taut_iff_cnf_unsat`.** *Nudge:* `constructor`; both directions are `intro …; rw [toCnf_eval]`
+(or `at`) then `simp`. `Tautology φ` is `∀ v, eval v φ = true`; `Unsat` is `∀ v, Cnf.eval v _ = false`;
+`toCnf_eval` at `b = false` says the latter's body is `!eval v φ`. *More:* forward —
+`intro h v; rw [toCnf_eval]; simp [h v]`; backward — `intro h v; have hv := h v; rw [toCnf_eval] at hv;
+simp at hv; exact hv`.
+
+## 7. Exercises (optional, for fluency)
+
+1. **The empty clause is unsatisfiable.** Prove `([[]] : Cnf).Unsat` (a clause set whose only clause is
+   `□`). *Hint:* unfold and `simp`; the empty clause has nothing to satisfy.
+2. **Use the bridge.** From `taut_imp_self` (Course 1: `Tautology (φ ⇒ φ)`), conclude
+   `(toCnf false (Form.var 0 ⇒ Form.var 0)).Unsat`. *Hint:* it's one application of `taut_iff_cnf_unsat`.
+
+## 8. Corrections to the optional exercises
+
+### Exercise 1 — `□` is unsatisfiable
+
+```lean
+example : ([[]] : Cnf).Unsat := by
+  intro v; simp [Cnf.eval, Clause.eval]
+```
+
+`Cnf.eval v [[]]` is "every clause is satisfied", and the only clause is `[]`, whose `Clause.eval` is
+"some literal is true" over *no* literals — `false`. So the whole thing is `false` for every `v`: the
+clause set is unsatisfiable. Deriving `□` from a clause set is therefore a certificate that the set has no
+model — the entire point of resolution.
+
+### Exercise 2 — refuting `∼(p ⇒ p)`
+
+```lean
+example : (toCnf false (Form.var 0 ⇒ Form.var 0)).Unsat :=
+  (taut_iff_cnf_unsat _).mp (taut_imp_self _)
+```
+
+`taut_imp_self` says `p ⇒ p` is valid; the bridge converts that validity into unsatisfiability of the
+clauses of its negation. Resolution will *find* that unsatisfiability by deriving `□` — which is exactly
+slice 2.2.
+
+## 9. Going further
+
+- **Tseitin encoding.** Our `toCnf` is *equivalence*-preserving but can blow up in size (the `distribute`
+  steps). Real solvers use the *Tseitin* transformation: introduce a fresh variable per subformula to get
+  an *equisatisfiable* CNF of linear size. A worthwhile extension — the correctness statement weakens from
+  "equivalent" to "equisatisfiable", which is all refutation needs.
+- **Next: slice 2.2 — the resolution rule.** From clauses `C ∨ p` and `D ∨ ¬p`, derive `C ∨ D`; a
+  *refutation* is a derivation of `□`. We define it as an inductive relation (echoing `Deriv` from 1.3)
+  and build a refutation by hand.
