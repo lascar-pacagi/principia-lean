@@ -23,8 +23,7 @@ test: build  ## build the library + kernel-check every Solution.lean (always GRE
 
 lab: build  ## build ONE concept's skeleton (RED until you discharge the sorries): make lab C=<dir>
 	@test -n "$(C)" || { echo "usage: make lab C=<concept-dir>  (e.g. 00-foundations/00-setup)"; exit 2; }
-	@echo "→ $(C)/Skeleton.lean — RED until every sorry is gone"
-	@lake env lean "$(C)/Skeleton.lean" && echo "✓ GREEN — skeleton complete!"
+	@bash tooling/lab.sh "$(C)/Skeleton.lean"
 
 axioms:  ## honesty audit: no stray sorry/axiom; no sorryAx in keystones
 	@bash tooling/audit.sh

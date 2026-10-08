@@ -6,6 +6,8 @@
 **Prerequisites.** None. This is the very first concept.
 
 **The rung.** Single rung — three tiny proofs (a logic one, an arithmetic one, a first induction).
+The lab applies the lesson to new goals: rearranging a nested conjunction (`and_reorder`), comparing
+two concrete sums (`sum_lt`), and proving `1 + n = n + 1` (`one_add'`).
 
 ## Definition of done
 

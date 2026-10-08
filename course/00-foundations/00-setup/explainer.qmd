@@ -11,7 +11,7 @@ title: "00 — Setup: your first proofs, and the loop"
 Lean is two things fused into one program:
 
 1. **A programming language** — you write functions, data types, recursion, much like any typed
-   functional language (think Haskell or the typed core of Swift/Rust).
+   functional language (think Haskell, or the functions, structs, and enums you know from Swift or Rust).
 2. **A proof checker** — you state mathematical claims and write proofs of them, and Lean *mechanically
    verifies* that each proof is airtight.
 
@@ -49,33 +49,173 @@ filled them all in correctly, it turns **green**. That red→green pulse is the 
 
 ## 3. The big idea: a proof is a program
 
-Here is the insight that makes Lean work — *propositions-as-types*, also called the Curry–Howard
-correspondence. Don't worry about the names; worry about the picture.
+How can writing a program establish a mathematical fact? Let's build the connection from things you
+already know about programming. The name for this connection is *propositions-as-types*, also called
+the Curry–Howard correspondence. We'll earn that name through examples.
 
-In an ordinary typed language you write things like `x : Nat` — "`x` is a value of type `Nat`." Lean
-uses that *exact same* notation for proofs:
+### Start with a type and a value
+
+In a typed language, a type tells you what kind of value an expression must produce. If a function
+promises to return an integer, returning a string is an error. The compiler checks that the value you
+provide meets the requirement.
+
+In Lean, `Nat` is the type of natural numbers: `0`, `1`, `2`, and so on. The notation
 
 ```lean
-h : p
+x : Nat
 ```
 
-reads "`h` is a proof of the proposition `p`." A **proposition** (something that could be true or
-false, like "`p` and `q`") is treated as a **type**, and a **proof** of it is a **value** (a term) of
-that type. So:
+means "`x` is a value of type `Nat`." The colon separates the value's name from its type. To provide
+a value of this type, you could supply `3`, or an expression such as `1 + 2` that produces a natural
+number.
 
-- To *prove* a proposition = to *construct* a value of its type.
-- "`p` is true" = "the type `p` has at least one value" (we can build a proof).
-- "`p` is false-and-unprovable" = "the type `p` is empty" (no value can be built).
+Now imagine a more specific requirement: **provide evidence that `2 + 2 = 4`.** Merely returning the
+number `4` doesn't meet that requirement. `4` is a number; we asked for a justification of an equality.
+Lean expresses that requirement as a type too:
 
-Why is this a good idea? Because now **building a proof is just programming**, and **checking a proof is
-just type-checking** — something computers are extremely good at and we already trust. A proof of an
-implication `p → q` is literally a *function* that turns a proof of `p` into a proof of `q`. A proof of
-"`p` and `q`" is a *pair*: one proof of `p` alongside one proof of `q`. We'll see both right now.
+```lean
+h : 2 + 2 = 4
+```
 
-(One technicality you can file away: propositions live in a special universe called `Prop`, where Lean
-ignores *which* proof you built — any two proofs of the same proposition are interchangeable. That's the
-difference between `Prop` and the data type `Nat`, where `2` and `3` are genuinely different. It won't
-trip you up today.)
+This reads "`h` is a proof that `2 + 2 = 4`." Here the type on the right of the colon is the whole
+claim `2 + 2 = 4`. A value of that type is evidence for that particular claim. Later, we'll see how
+Lean can check this equality by computing both sides.
+
+A **proposition** is a statement that makes a claim: "`2 + 2 = 4`," "`n` is even," or "every natural
+number has a successor." A question such as "what is `2 + 2`?" asks for a number; the proposition
+"`2 + 2 = 4`" asks us to justify a claim. That distinction is why their answers have different types.
+
+### A proposition describes the evidence you must supply
+
+Think of a proposition as a specification for evidence. To prove it, you must construct something
+that meets that specification. The structure of the claim determines the structure of the evidence.
+
+For an everyday example, suppose a form asks you to establish:
+
+> You have proof of identity **and** proof of address.
+
+A passport alone doesn't satisfy both requirements. A utility bill alone doesn't either. You need
+to provide both pieces of evidence together. The logical word **and** tells you how to assemble your
+answer: a pair containing evidence for the first claim and evidence for the second.
+
+The same structure appears in mathematics. Let `p` mean "`n` is even" and `q` mean "`n` is greater
+than ten." A proof of "`p` and `q`" must contain a proof that `n` is even **and** a proof that `n` is
+greater than ten. Neither component can stand in for the other.
+
+In Lean, we write "`p` and `q`" as `p ∧ q`. If you have
+
+```lean
+h : p ∧ q
+```
+
+then `h` contains those two proofs. This explains our first exercise already: to prove `q ∧ p` from
+`p ∧ q`, take the two pieces of evidence you have and put them in the opposite order. You don't need
+to discover anything new about `p` or `q`; you need to assemble the evidence in the requested order.
+We'll write that assembly explicitly in §4.
+
+### An implication is a function on evidence
+
+Now consider the claim:
+
+> **If** `n` is divisible by four, **then** `n` is even.
+
+To justify this, you need a method that works for any `n`: given evidence that `n` is divisible by
+four, produce evidence that `n` is even.
+
+Here is that method in ordinary mathematics. Being divisible by four means there is a natural number
+`k` such that `n = 4 × k`. Rewrite this as `n = 2 × (2 × k)`. We have exhibited a natural number,
+`2 × k`, whose double is `n`, which is exactly what it means for `n` to be even.
+
+Notice the input and output:
+
+- **Input:** evidence of divisibility by four, including the number `k` and the equality `n = 4 × k`.
+- **Output:** evidence of evenness, using the number `2 × k` and the equality `n = 2 × (2 × k)`.
+
+That's a function! Its input and output are proofs. In general, Lean writes an implication as
+`p → q`, and a proof of it is a function that accepts a proof of `p` and returns a proof of `q`.
+
+Proving an implication doesn't require proving its premise on its own. Our method establishes
+"divisible by four implies even" without claiming that every number is divisible by four. For
+`n = 6`, you cannot supply the input evidence, so you cannot apply this method to establish that
+`6` is even. You would need another proof of its evenness.
+
+This is why, inside a proof of "if `p`, then `q`," we may **assume `p`**. We are writing a function
+whose caller must supply evidence for `p`. Our job is to use that input to produce evidence for `q`.
+
+### What the checker checks
+
+The correspondence now has concrete content:
+
+| Claim or programming concept | What you construct |
+|---|---|
+| A value of type `Nat` | A natural number |
+| A proof of proposition `p` | Evidence that meets the requirements of `p` |
+| A proof of `p ∧ q` | A pair: a proof of `p` and a proof of `q` |
+| A proof of `p → q` | A function taking a proof of `p` to a proof of `q` |
+
+When Lean checks a proof, it checks that the expression you built has the type of the proposition
+you claimed. For an "and," both components must prove the right claims. For an implication, the
+function must produce the promised conclusion from its allowed input. Each step has precise rules;
+the kernel checks that you obeyed them.
+
+So **proving a proposition means constructing a value of its type**. Such a type is called
+*inhabited* when it has a value — in this case, a proof. The proposition `False` has no proof
+constructor: you cannot simply manufacture a value of that type.
+
+Be careful about the difference between "I haven't found a proof" and "this claim is false." An
+unfinished proof establishes neither truth nor falsity. To prove that a claim is false, Lean asks
+you to show that any supposed proof of it would lead to a contradiction. We'll learn how to do that
+later; for now, an unfinished goal simply means work remains.
+
+### What `Prop` means — and what it doesn't mean
+
+You will soon see `(p q : Prop)` in a theorem declaration. Read this as **"`p` and `q` are
+propositions."** `Prop` tells Lean what kind of things `p` and `q` are, just as `Nat` tells Lean
+that `n` in `(n : Nat)` is a natural number. Declaring `p : Prop` doesn't establish `p`; it merely
+introduces a claim. Having `h : p` supplies evidence for that claim.
+
+You might now ask: **if `p` is itself a type, is `Prop` the type of a type?** Yes — that's a useful
+way to read `p : Prop`. Lean lets types themselves have types. Here there are three levels:
+
+| Level | Example | Meaning |
+|---|---|---|
+| A proof | `h` | Evidence for a particular claim |
+| The proof's type | `p`, for example `2 + 2 = 4` | The claim that the evidence must establish |
+| The type of that proposition type | `Prop` | Classifies `p` as a proposition |
+
+Read the two declarations together:
+
+```lean
+p : Prop   -- p is a proposition, so it is a type whose values are proofs
+h : p      -- h is one such value: a proof of p
+```
+
+The colon has the same meaning in both lines: "has type." What changes is what we're classifying.
+The first line classifies a proposition; the second classifies its evidence. In the concrete example,
+`h` has type `2 + 2 = 4`, and `2 + 2 = 4` has type `Prop`. **The proof has type `p`; the proposition
+has type `Prop`.** These are two separate steps.
+
+Lean calls `Prop` a **universe**: it classifies a family of types, namely the types that represent
+propositions. Ordinary data types have a universe too: `Nat : Type` says that `Nat` is a data type,
+while `n : Nat` says that `n` is a natural number. You don't need the wider universe hierarchy yet;
+the useful point here is that a type can itself have a type.
+
+For example, both `2 + 2 = 4` and `2 + 2 = 5` are propositions. Both belong to `Prop`, because both
+are claims. Only the first can be proved in our arithmetic.
+
+There is one useful distinction between proofs and ordinary data. Suppose Alice establishes
+`2 + 2 = 4` by computing, while Bob establishes it using general laws of addition. Their reasoning
+can look different, and Lean checks each proof. Once accepted, either proof can be used wherever
+evidence of `2 + 2 = 4` is required. You don't have to match Alice's particular method.
+
+Lean goes further: it treats any two proofs of the **same proposition** as equal. This rule is called
+*proof irrelevance*. It doesn't mean Lean skips checking proofs; it means that, after checking, the
+identity of the proof doesn't matter. With ordinary data, identity does matter: returning `2` and
+returning `3` give different results, even though both values have type `Nat`.
+
+For today's lab, the practical lesson is simple: **produce a valid proof of the requested claim;
+there is no requirement to reproduce one particular proof.** The next section makes this tangible by
+building the same proof with two different styles of Lean code.
 
 ## 4. Your first proof, two ways: `and_swap`
 
@@ -119,51 +259,259 @@ theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
   · exact h.1   -- prove the `p` goal using h.1
 ```
 
-What's happening:
+**Where do you see the goals?** The code block above is a static example. Reading the HTML or PDF
+doesn't run Lean, and `make lab` reports errors or success rather than displaying every intermediate
+proof state. The interactive view belongs to the Lean editor: in VS Code with the Lean extension,
+it is called the **Infoview**. When you work in a `.lean` file, that view lets you inspect the goals
+at your cursor position. You can also follow the whole proof here: the snapshots below show the
+states we are describing.
 
-- `by` switches into tactic mode. Lean now shows you a **goal state**: the hypotheses you have (here
-  `p q : Prop`, `h : p ∧ q`) above a line, and the goal (`⊢ q ∧ p`) below it. The turnstile `⊢` means
-  "you must prove."
-- `constructor` says "build the goal with its constructor." Since `q ∧ p` is built from a proof of `q`
-  and a proof of `p`, this replaces one goal with **two**: `⊢ q` and `⊢ p`.
-- The `·` bullets focus on one goal at a time. `exact h.2` says "the goal is *exactly* this term" — and
-  `h.2 : q` matches `⊢ q`. Likewise `exact h.1` closes `⊢ p`.
+#### Before `constructor`: what do we have, and what do we need?
 
-Tactics don't produce a different kind of proof — behind the scenes they assemble the very same term
-`⟨h.2, h.1⟩`. They're just a more convenient way to write it. **The single most important habit in
-Lean:** in your editor, put the cursor at different points and *read the goal state*. It tells you
-exactly what you have and what's left to prove.
+The `by` introduces a block of instructions for constructing a proof. At the beginning, our state is:
+
+```text
+p q : Prop
+h : p ∧ q
+⊢ q ∧ p
+```
+
+Read this from top to bottom:
+
+- `p q : Prop`: `p` and `q` are propositions. We haven't specified which claims they stand for.
+- `h : p ∧ q`: we have evidence that both claims hold. This is an input to our theorem.
+- `⊢ q ∧ p`: we must produce evidence that both hold, in the opposite order.
+
+The symbol `⊢`, called the **turnstile**, separates what we have from what we need to prove. Everything
+above it is available to us; the expression after it is the **goal**. The goal is a request for a
+proof, not a statement that Lean has already proved.
+
+#### After `constructor`: split the requested pair into two tasks
+
+To build evidence of `q ∧ p`, we need two components: evidence of `q`, then evidence of `p`.
+The tactic `constructor` asks Lean to build the proof using this pair structure. Lean now asks us
+to fill in its two components, giving two goals:
+
+```text
+case left
+p q : Prop
+h : p ∧ q
+⊢ q
+
+case right
+p q : Prop
+h : p ∧ q
+⊢ p
+```
+
+These are two separate tasks with the same available input `h`. The labels `left` and `right` refer
+to the components of the **goal** `q ∧ p`: the left component is `q`, and the right component is `p`.
+They don't refer to the order inside our input `h : p ∧ q`.
+
+Think of the proof we're building as a pair with two holes:
+
+```text
+⟨a proof of q goes here, a proof of p goes here⟩
+```
+
+#### After `· exact h.2`: the first task is finished
+
+The first `·` bullet focuses on the first goal, `⊢ q`. Since `h` contains a proof of `p` followed by
+a proof of `q`, its second component `h.2` has type `q`. That is exactly the evidence this goal asks
+for.
+
+`exact h.2` means **"use this existing proof to finish the current goal."** Lean checks that its type
+matches the goal and closes that task. The pair now has its first component:
+
+```text
+⟨h.2, a proof of p goes here⟩
+```
+
+One task remains. At the second bullet, the available evidence and goal are:
+
+```text
+case right
+p q : Prop
+h : p ∧ q
+⊢ p
+```
+
+#### After `· exact h.1`: the proof is complete
+
+The second `·` bullet focuses on the remaining goal. The first component of `h`, namely `h.1`,
+has type `p`. So `exact h.1` supplies the missing evidence. There are now **no goals left**, and the
+finished proof is:
+
+```text
+⟨h.2, h.1⟩
+```
+
+That's the same pair we wrote directly in term mode. Tactics give instructions for assembling a
+proof; the resulting proof is still a value whose type the kernel checks.
+
+When you work in the editor, inspect the goal state as you move through the proof. Ask two questions:
+**"What evidence do I have?"** and **"What evidence must I produce?"** Here the answer changes from
+"produce a pair" to "produce `q`" to "produce `p`" to "nothing remains."
 
 ## 5. When the computer can just check it: `two_plus_two`
 
-Some claims are true simply because *both sides compute to the same thing*. The kernel can run
-computations, so:
+There are two ways Lean can use computation to finish a small proof: `rfl` and `decide`. They both
+prove our next theorem, which can hide the difference between them. Let's first follow each method,
+then look at examples where their behavior differs.
+
+### `rfl`: do the two sides reduce to the same expression?
 
 ```lean
 theorem two_plus_two : 2 + 2 = 4 := by rfl
 ```
 
-`rfl` stands for *reflexivity*: it proves goals of the form `a = a`. But Lean checks equality **up to
-computation** (the jargon is *definitional equality*): it evaluates `2 + 2`, gets `4`, sees `4 = 4`, and
-accepts. You didn't reason about addition — you let the kernel *do* the addition. (This is the
-"programming language" half of Lean earning its keep.)
+`rfl` stands for *reflexivity*: something is equal to itself. The goal doesn't need to **look** like
+`a = a` when you write it. Lean can unfold definitions and compute before checking whether the two
+sides are the same. Here is the path:
 
-A close cousin you'll use a lot is `decide`, which works for any claim Lean knows how to *decide* by a
-terminating computation (equalities of concrete numbers, `≤` on numbers, etc.):
+```text
+Goal:                 2 + 2 = 4
+Compute the left:         4 = 4
+Use reflexivity:      a value equals itself
+```
+
+Equality after unfolding definitions and computing is called **definitional equality**. For this
+proof, we don't need a general theorem about addition. Its definition already makes the two sides
+the same.
+
+### `decide`: can a decision procedure establish the claim?
 
 ```lean
 theorem two_plus_two' : 2 + 2 = 4 := by decide
 ```
 
-Rule of thumb: if a goal is about *specific* values, try `rfl` or `decide` before reasoning by hand.
+A **decision procedure** is an algorithm that determines whether a claim is true or false. For
+example, comparing two natural numbers can decide whether they are equal, and comparing their sizes
+can decide whether one is smaller than the other.
+
+Lean's decision procedures produce evidence along with their answer: either a proof of the claim or
+a proof that it is false. The `decide` tactic evaluates the available procedure; if it reaches the
+"true, with evidence" result, it uses that evidence to finish the goal. Conceptually:
+
+```text
+Goal:                 2 + 2 = 4
+Run the equality test on the resulting natural numbers
+Result:               equal, with evidence
+Use that evidence to prove the goal
+```
+
+You don't need to write the comparison algorithm yourself; Lean already provides decision procedures
+for many familiar claims about natural numbers. Both `rfl` and `decide` ultimately produce proofs
+that the kernel checks.
+
+So **for `2 + 2 = 4`, either tactic is a good answer**. This example alone doesn't tell us when to
+choose one over the other.
+
+### A case where `decide` works and `rfl` doesn't
+
+Consider a different claim:
+
+```lean
+example : 2 < 5 := by decide
+```
+
+Here `example` asks Lean to check a proof without giving the theorem a name. The claim is that two
+is less than five. Lean has an algorithm for comparing natural numbers, and it can run that algorithm
+on these specific inputs, so `decide` succeeds.
+
+Replacing `decide` with `rfl` fails. This goal isn't an equality whose two sides reduce to the same
+expression. It needs evidence of a less-than relation. A number-comparison procedure supplies that
+evidence; reflexivity doesn't.
+
+### A case where `rfl` works and plain `decide` doesn't
+
+Now let the number be an unknown input:
+
+```lean
+example (n : Nat) : n + 0 = n := by rfl
+```
+
+You don't need to know the value of `n` here. Addition's definition says that adding zero on the
+right returns the first number unchanged. Unfolding that definition gives:
+
+```text
+Goal:                 n + 0 = n
+Use the definition:       n = n
+Use reflexivity:      the same expression is on both sides
+```
+
+Plain `decide` fails on this example. Although Lean has a procedure for testing equality of natural
+numbers, that procedure inspects their structure — whether they are zero or a successor, and then
+their smaller components. The unknown input `n` prevents this computation from finishing. Even the
+goal `n = n` can get stuck with `decide` for this reason, while `rfl` proves it immediately.
+
+This is the answer to **"why not always use `decide`?"** A general algorithm for comparing two
+numbers may need to inspect the numbers. Recognizing that the same expression appears on both sides
+requires no such inspection. `rfl` can therefore succeed where the decision procedure gets stuck.
+
+### Compare the examples side by side
+
+These are the results for the course's Lean version, using the plain tactics shown above:
+
+| Goal | `rfl` | `decide` | Why |
+|---|---|---|---|
+| `2 + 2 = 4` | Succeeds | Succeeds | Both sides compute to `4`; a numerical equality test also succeeds. |
+| `2 < 5` | Fails | Succeeds | A comparison decides this inequality; reflexivity doesn't prove it. |
+| `n = n`, with unknown `n : Nat` | Succeeds | Fails | The expressions already match; the equality procedure gets stuck inspecting `n`. |
+| `n + 0 = n`, with unknown `n : Nat` | Succeeds | Fails | The definition reduces the left side to `n`; the equality procedure still gets stuck. |
+| `0 + n = n`, with unknown `n : Nat` | Fails | Fails | Neither tactic can finish the needed computation with an unknown `n`. |
+
+The last row introduces our next lesson. Swapping the order of the addition changes what the
+definition can compute. We will prove `0 + n = n` by reasoning about all the possible shapes of `n`,
+using **induction**.
+
+For now, choose the tactic by the reason the claim should hold: try `rfl` when an equality should
+follow directly from definitions, and `decide` when a known decision procedure can compute an answer,
+especially for concrete inputs. Neither tactic searches through arbitrary mathematical arguments.
 
 ## 6. Your first induction: `zero_add'`
 
 Now the interesting one. We'll prove `0 + n = n` for *every* natural number `n`. You might expect this
 to be as free as `2 + 2 = 4`. It isn't — and *why* is genuinely illuminating.
 
-Natural numbers in Lean are built from two constructors: `0` (zero) and `n + 1` (the successor of `n`).
-Addition is *defined by recursion on its second argument*:
+### How Lean builds natural numbers: `zero` and `succ`
+
+So far we've used numbers such as `0`, `2`, and `4` without asking how the type `Nat` is defined.
+To understand induction, we need to look inside that type.
+
+A **constructor** is a way to build a value of a type. You might know constructors from enums: each
+variant specifies one possible shape of a value, sometimes carrying more data. Lean's natural-number
+type has exactly two constructors:
+
+| Constructor | What it needs | What it builds |
+|---|---|---|
+| `Nat.zero` | Nothing | The number zero |
+| `Nat.succ` | A natural number `k` | The next number after `k` |
+
+`succ` is short for **successor**. `Nat.succ k` means the successor of `k`, or `k + 1`. The `Nat.`
+prefix says these names belong to the natural-number type. In ordinary code, we usually write the
+numeral `0` instead of `Nat.zero`.
+
+There isn't a separate constructor for each number. Repeatedly applying `succ` builds them all:
+
+```text
+0 = Nat.zero
+1 = Nat.succ Nat.zero
+2 = Nat.succ (Nat.succ Nat.zero)
+3 = Nat.succ (Nat.succ (Nat.succ Nat.zero))
+```
+
+Think of `succ` as adding one layer around an existing natural number. Every number is either zero,
+with no layers, or a successor with a smaller number inside it. For example, `3` is `Nat.succ 2`;
+peeling off its outer layer reveals `2`.
+
+This gives us an exhaustive way to reason about an unknown `n : Nat`: **either `n` is zero, or `n`
+is `Nat.succ k` for some natural number `k`.** There is no third shape to handle. These are the
+two cases that will appear in our induction proof.
+
+### Why the definition of addition matters
+
+Addition is *defined by recursion on its second argument*. It uses those same two shapes:
 
 ```lean
 -- (this is how Nat.add is defined in Lean's core, paraphrased)
@@ -180,8 +528,41 @@ Look carefully. The pattern-match is on the **second** argument:
   `0`, then prove that *if* it holds for `k` it holds for `k + 1`. Those two cases cover every natural
   number, because every natural number is reachable from `0` by repeatedly adding `1`.
 
-This asymmetry (`add_zero` free, `zero_add` needs induction) surprises everyone the first time. It's not
-a quirk — it's the shape of the definition showing through. Here's the proof:
+This asymmetry (`add_zero` free, `zero_add` needs induction) comes from the shape of the definition.
+
+### From the two constructors to an induction proof
+
+To prove the claim for **every** natural number, we prove it for zero and show how to extend a proof
+for `k` into a proof for its successor. Imagine following the resulting chain:
+
+```text
+Proof for 0
+  → proof for 1, using the proof for 0
+  → proof for 2, using the proof for 1
+  → proof for 3, using the proof for 2
+  → ...
+```
+
+We don't write a separate proof for every number. We write the starting proof and one general step
+that works for any `k`. Every natural number is reached after finitely many steps, because that's
+how the constructors build it.
+
+In Lean, `induction n with` asks for these two parts. The branch names come directly from the
+constructors we just introduced:
+
+- **`| zero => ...`** handles the constructor `Nat.zero`. There is no smaller number inside zero,
+  so this branch receives no predecessor or induction hypothesis.
+- **`| succ k ih => ...`** handles the constructor `Nat.succ`. Here `k` names the smaller number
+  inside the successor. The extra input `ih` is a proof that our claim holds for `k`: the
+  **induction hypothesis**. We must use it to establish the claim for `Nat.succ k`.
+
+The vertical bar `|` begins a branch, and `=>` separates its heading from the proof for that branch.
+`zero` and `succ` are the case names supplied by Lean; `k` and `ih` are names we choose for the
+inputs in the successor case. In particular, `ih` isn't another part of the number — it is evidence
+provided by the induction principle. Merely splitting a number into cases wouldn't supply this
+evidence; asking for **induction** does.
+
+Here is the complete proof:
 
 ```lean
 theorem zero_add' (n : Nat) : 0 + n = n := by
@@ -192,7 +573,8 @@ theorem zero_add' (n : Nat) : 0 + n = n := by
 
 Walking through it with the goal state in mind:
 
-- `induction n with` splits into the two cases above, named `zero` and `succ`.
+- `induction n with` creates the `zero` and `succ` cases, giving the successor case its induction
+  hypothesis.
 - **Case `zero`** — goal `⊢ 0 + 0 = 0`. By the base equation `0 + 0` *is* `0`, so this is `rfl`.
 - **Case `succ k ih`** — we're proving it for `k + 1`, and we get to *assume* it for `k`. That
   assumption is the **induction hypothesis** `ih : 0 + k = k`. The goal is `⊢ 0 + (k + 1) = k + 1`.
@@ -201,16 +583,29 @@ Walking through it with the goal state in mind:
   - `rw [ih]` rewrites `0 + k` into `k` (that's what `ih` says), giving `⊢ k + 1 = k + 1`. `rw`
     automatically finishes a goal that has become `a = a`, so we're done.
 
-`rw [a, b]` just does the rewrites left to right in sequence. And yes — `simp` or `omega` would have
-closed this in one shot; we did it by hand on purpose, to *see* induction work. Throughout the course
-we reach for the automatic tactics only after we understand what they're doing for us.
+`rw [a, b]` performs the rewrite using `a`, then the rewrite using `b`, in that order.
+
+Lean also has tactics that automate more of the reasoning. Two you will encounter later are:
+
+- **`simp`**, short for *simplify*, repeatedly applies a collection of known simplification rules.
+  For this goal, Lean already has a proved rule saying `0 + n = n`, so `simp` can use that rule
+  directly. It reuses an existing theorem rather than asking you to write the induction again.
+- **`omega`** is a procedure for reasoning about arithmetic with natural numbers and integers,
+  including addition, equalities, and inequalities. It can establish this identity automatically.
+  It doesn't solve arbitrary mathematics; for example, general multiplication of two unknown
+  variables is outside its scope.
+
+Either tactic can finish `0 + n = n` in one step. We wrote the induction ourselves so you could see
+why the identity holds and how the definition of `Nat` guides the proof. You don't need to learn
+these two tactics yet; we'll explain them further when we use them. Like the tactics you've already
+seen, they produce proofs that the kernel checks.
 
 ## 7. The loop in detail: `sorry`, red, and green
 
 Open `Skeleton.lean`. Each proof is the placeholder `sorry`:
 
 ```lean
-theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
+theorem and_reorder (p q r : Prop) (h : p ∧ (q ∧ r)) : q ∧ (p ∧ r) := by
   sorry
 ```
 
@@ -236,8 +631,132 @@ knowing from day one (in VS Code with the Lean extension, the goal shows in the 
 example : 0 + 5 = 5 := by exact?   -- ask Lean to search its library for a proof
 ```
 
-`exact?`, `apply?`, and `rw?` are search tactics — when you don't know the next step, they suggest one.
-`example` lets you state a throwaway goal to experiment without naming a theorem.
+### Use `example` as a small proof experiment
+
+`example` works like `theorem`, except you don't give the result a name. For instance:
+
+```lean
+example : 3 + 1 = 4 := by
+  rfl
+```
+
+This asks Lean to check a proof of `3 + 1 = 4`. It checks the proof just as strictly as a named
+theorem, but you can't refer to this result later by a theorem name. This makes `example` useful for
+practice: put a small claim in a scratch `.lean` file, try a tactic, and inspect the result without
+adding a named theorem to your library.
+
+An `example` can also have inputs, such as `(n : Nat)` or `(h : p ∧ q)`, just like the theorems we've
+written. The expressions after the colon and `by` still give the goal and its proof.
+
+### What the question mark means in `exact?`, `apply?`, and `rw?`
+
+In §4, `exact h.2` supplied an existing proof to finish a goal. In §6, `rw` rewrote the goal using
+named equalities. Sometimes you know the kind of step you need, but don't know which proof or theorem
+to use. The question-mark versions
+ask Lean to **search for a candidate and suggest concrete proof code**.
+
+Suggestions appear as messages, usually headed **“Try this:”**. In the editor, inspect the messages
+associated with the tactic in the Infoview; when you run Lean from the terminal, these messages appear
+in its output. A suggestion can be a complete proof or a step that leaves further goals. Read it,
+check the remaining goals, and replace the search tactic with the suggested code when it makes sense
+to you. The exact suggestion can vary with the available theorems and Lean version.
+
+**`exact?`: search for a proof that finishes the current goal.** Try:
+
+```lean
+example : 0 + 5 = 5 := by
+  exact?
+```
+
+In the course's Lean version, this suggests:
+
+```lean
+exact Nat.zero_add 5
+```
+
+`Nat.zero_add` is the standard library's theorem that `0 + n = n` for every natural number `n`.
+Applying it to `5` gives a proof of exactly our goal. Here the search finds an existing theorem,
+instead of making us rediscover its name or repeat its proof. You can replace `exact?` with that
+line and Lean will check it again.
+
+**`apply?`: search for a theorem whose conclusion fits the goal.** To understand the idea, recall
+an implication `p → q`: applying it to a goal `q` leaves you the task of providing evidence of `p`.
+The ordinary tactic `apply` works this way; `apply?` searches for something suitable to apply.
+It may find a complete proof, or suggest a step with premises still to prove.
+
+For a small experiment:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  apply?
+```
+
+Here Lean can find the complete proof `exact ⟨hp, hq⟩`. The theorem for constructing a conjunction
+is named `And.intro`: it needs a proof of `p` and a proof of `q` to produce a proof of `p ∧ q`.
+If we apply it ourselves, we can see those requirements become goals:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  apply And.intro
+  · exact hp
+  · exact hq
+```
+
+Let's unpack the connection with **`constructor`**, the tactic from §4. We called a constructor
+a way to build a value of a type. Since a proof is a value too, a proposition can have a constructor
+that builds its evidence. For `p ∧ q`, that constructor is named `And.intro`. Its rule is:
+
+```text
+Give me a proof of p and a proof of q
+  → I will build a proof of p ∧ q
+```
+
+Suppose our goal is `⊢ p ∧ q`. There are two ways to ask Lean to use this rule:
+
+- **`apply And.intro`**: we name the rule ourselves. Lean sees that its output matches our goal,
+  then asks us to supply its two inputs: a proof of `p` and a proof of `q`.
+- **`constructor`**: we ask Lean to use a constructor of the proposition in the goal. Lean sees
+  that the goal is an "and," selects `And.intro`, and asks for the same two inputs.
+
+Both instructions therefore produce this change:
+
+```text
+Before:                After:
+⊢ p ∧ q                First goal:  ⊢ p
+                       Second goal: ⊢ q
+```
+
+Neither instruction supplies the two proofs for us. They set up the structure of the answer and
+leave its components to be filled. In the example above, `exact hp` fills the first component and
+`exact hq` fills the second. We could write it with `constructor` instead:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  constructor
+  · exact hp
+  · exact hq
+```
+
+Both versions build the pair `⟨hp, hq⟩`. **For an "and" goal, `constructor` chooses `And.intro`
+for you; `apply And.intro` explicitly names that same constructor.** For another kind of goal,
+`constructor` would look for that type's constructors instead. It doesn't always split a goal into
+two: the number of tasks depends on what the selected constructor needs.
+
+**`rw?`: search for an equality that makes progress by rewriting.** For example:
+
+```lean
+example (a b : Nat) (h : a = b) : a + 1 = b + 1 := by
+  rw?
+```
+
+Here Lean suggests `rw [h]`. The hypothesis `h` lets us replace `a` with `b`, turning the goal into
+`b + 1 = b + 1`, which finishes by reflexivity. On a larger goal, a suggested rewrite may only move
+you one step forward; inspect the new state before continuing.
+
+These tools help you discover available proofs and rules. They don't guarantee that a useful step
+exists or that their first suggestion is the clearest explanation. For today's exercises, try the
+tools taught in the lesson first; if you use a search tactic, make sure you can explain the proof it
+suggests.
 
 ## 8. The honesty rule
 
@@ -270,36 +789,52 @@ Open `Skeleton.lean`, replace each `sorry` with a real proof, and check with:
 make lab C=00-foundations/00-setup
 ```
 
-The three goals:
+The worked examples above showed the tools. These three new goals ask you to apply them in different
+situations:
 
-1. **`and_swap (p q : Prop) (h : p ∧ q) : q ∧ p`** — swap a conjunction.
-2. **`two_plus_two : 2 + 2 = 4`**.
-3. **`zero_add' (n : Nat) : 0 + n = n`** — your first induction.
+1. **Rearrange three pieces of evidence.** Prove
+   `and_reorder (p q r : Prop) (h : p ∧ (q ∧ r)) : q ∧ (p ∧ r)`.
+   Read the input as "`p` holds, and both `q` and `r` hold." The output must establish "`q` holds,
+   and both `p` and `r` hold." Parentheses specify how the evidence is grouped. All three claims
+   must appear in the result; this is more than swapping the two components from §4.
+2. **Check an arithmetic comparison.** Prove `sum_lt : 3 + 4 < 5 + 3`.
+   The symbol `<` means "is less than." Both sides are concrete sums, but the claim asks for evidence
+   of an inequality rather than an equality. Choose a tactic from §5 and explain why it fits.
+3. **Prove a new identity for every natural number.** Prove
+   `one_add' (n : Nat) : 1 + n = n + 1`.
+   This says that adding one on the left gives the same result as adding one on the right. Your proof
+   must work for an arbitrary `n`; checking a few particular numbers doesn't establish the claim.
 
-Try each one **cold** before reading on — that small struggle is where the learning is, and the skeleton
-deliberately gives you nothing but the statement. Everything you need was built in §3–§8. If you get
+Try each one **before looking at the hints** — that small struggle is where the learning is, and the
+skeleton deliberately gives you nothing but the statement. Everything you need was built in §3–§8.
+After each proof, explain which input evidence, definition, or computation made it work. If you get
 stuck, §10 below has *graduated* hints (take the smallest that unblocks you), and `Solution.lean` has the
 finished proofs — read those to understand *why*, never just to copy.
 
 ## 10. Hints for the skeleton
 
-**`and_swap`.** You're handed a proof of `p ∧ q` and must produce one of `q ∧ p`.
+**`and_reorder`.** The evidence is grouped into pairs inside pairs.
 
-- *Nudge:* §4 covered both halves of this — how to take a conjunction *apart*, and how to put one
-  *together*. You only need to combine those two moves.
-- *More:* a single term `⟨_, _⟩` does it; or in tactic mode, `constructor` then close each part with `exact`.
+- *Nudge:* draw the input and output as nested pairs. Which claim belongs in each position?
+- *More:* `h.1` proves `p`, while `h.2` proves `q ∧ r`. You can take this second pair apart too:
+  `h.2.1` proves `q` and `h.2.2` proves `r`.
+- *Next step:* `constructor` splits the output into goals `q` and `p ∧ r`. The latter needs another
+  `constructor`. Alternatively, build a term with a pair nested inside a pair.
 
-**`two_plus_two`.** This is about *specific* numbers, not a variable.
+**`sum_lt`.** This goal asks whether one concrete sum is smaller than another.
 
-- *Nudge:* don't reason about addition at all — let the kernel compute both sides. Which one-word tactic
-  from §5 does exactly that?
+- *Nudge:* review the comparison example in §5. Which tactic can produce evidence for `<`?
+- *More:* `rfl` doesn't prove this inequality. Lean can decide the comparison after computing the sums.
 
-**`zero_add'`.** The variable `n` is precisely what blocks a direct `rfl`.
+**`one_add'`.** The left side's addition is stuck on an unknown second argument.
 
-- *Nudge:* re-read §6 — it explains why `rfl` is stuck here, and which tactic to reach for instead.
-- *More:* `induction n with | zero => ?_ | succ k ih => ?_` (each `?_` is a case for you to fill). The
-  base case computes on its own; the step needs one rewrite by the `+`/successor step-equation, then the
-  induction hypothesis `ih`.
+- *Nudge:* use the same way of covering all natural numbers as in §6, but work out the new goal in each
+  case. What does the statement become when `n` is zero?
+- *More:* after `induction n with`, the successor case gives `ih : 1 + k = k + 1`. Your goal is
+  `1 + Nat.succ k = Nat.succ k + 1`.
+- *Next step:* use `Nat.add_succ` to expose `1 + k`, then rewrite it using `ih`. The two resulting
+  expressions agree by computation. The same tactics as in §6 work, but they now establish a
+  different identity.
 
 ## 11. Exercises (optional, for fluency)
 

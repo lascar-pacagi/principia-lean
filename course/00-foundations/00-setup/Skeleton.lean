@@ -11,13 +11,21 @@ set_option warningAsError true
 
 namespace Setup
 
-theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := by
-  sorry
+theorem and_reorder (p q r : Prop) (h : p ∧ (q ∧ r)) : q ∧ (p ∧ r) := by
+  apply And.intro
+  . exact h.2.1
+  . apply And.intro
+    . exact h.1
+    . exact h.2.2
 
-theorem two_plus_two : 2 + 2 = 4 := by
-  sorry
 
-theorem zero_add' (n : Nat) : 0 + n = n := by
-  sorry
+
+theorem sum_lt : 3 + 4 < 5 + 3 := by
+  decide
+
+theorem one_add' (n : Nat) : 1 + n = n + 1 := by
+  induction n with
+  | zero => rfl
+  | succ k ih => rw [Nat.add_succ, ih]
 
 end Setup
