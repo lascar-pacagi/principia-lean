@@ -21,7 +21,7 @@ test: build  ## build the library + kernel-check every Solution.lean (always GRE
 	  for f in $$files; do echo "  lean  $$f"; lake env lean "$$f"; done; fi; \
 	echo "✓ all solutions kernel-certified"
 
-lab: build  ## build ONE concept's skeleton (RED until you discharge the sorries): make lab C=<dir>
+lab: build  ## check required exercises + report optional progress: make lab C=<dir>
 	@test -n "$(C)" || { echo "usage: make lab C=<concept-dir>  (e.g. 00-foundations/00-setup)"; exit 2; }
 	@bash tooling/lab.sh "$(C)/Skeleton.lean"
 

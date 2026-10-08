@@ -29,14 +29,16 @@ kernel is the **oracle**, and unlike a textbook's answer key, you cannot fudge i
 
 ## 2. The pieces in front of you
 
-This concept is a directory with four files. You'll see this same shape every time:
+This concept is a directory with four core files, plus a separate pair for optional practice:
 
 | File | What it is | You edit it? |
 |---|---|---|
 | `README.md` | the objective and "definition of done" | no |
 | `explainer.qmd` | **this lesson** | no |
-| `Skeleton.lean` | the theorems, with their proofs left as `sorry` + tips | **yes — this is your workspace** |
+| `Skeleton.lean` | the required theorems, with their proofs left as `sorry` | **yes — this is your workspace** |
 | `Solution.lean` | the finished, verified proofs (+ a couple of checks) | peek only when stuck |
+| `optional/Skeleton.lean` | the optional exercises from §11, with proofs left as `sorry` | **yes — when you want extra practice** |
+| `optional/Solution.lean` | the finished proofs for the optional exercises | peek after trying |
 
 The workflow is one command:
 
@@ -44,8 +46,10 @@ The workflow is one command:
 make lab C=00-foundations/00-setup
 ```
 
-That asks Lean to check **your** `Skeleton.lean`. While any proof is missing, it's **red**; when you've
-filled them all in correctly, it turns **green**. That red→green pulse is the heartbeat of the course.
+That asks Lean to check **your** `Skeleton.lean`. While any required proof is missing, it's **red**;
+when you've filled them all in correctly, it turns **green**. The command also checks the optional
+file: unfinished optional proofs appear in **yellow** and don't prevent the required lab from passing.
+That red→green pulse for the required proofs is the heartbeat of the course.
 
 ## 3. The big idea: a proof is a program
 
@@ -838,18 +842,49 @@ finished proofs — read those to understand *why*, never just to copy.
 
 ## 11. Exercises (optional, for fluency)
 
-Try these in a scratch file or by adding `example`s. They reinforce today's ideas:
+Open **`optional/Skeleton.lean`** for these three exercises. They reinforce today's ideas, and each
+has its own proof placeholder. Keep your required proofs in `Skeleton.lean`; optional practice has
+its own file and status.
+
+Check both sets with the same command:
+
+```bash
+make lab C=00-foundations/00-setup
+```
+
+- **Required exercises:** `PASS` in green when complete, or `FAIL` in red if a proof is unfinished
+  or has an error. This status determines whether the command succeeds.
+- **Optional exercises:** each remaining proof placeholder is marked `OPTIONAL — PENDING` in
+  yellow. Once all three proofs check, the optional set shows `PASS` in green. Other proof errors
+  are marked `FAIL` in red so you can find and fix them, but they don't fail the required lab.
+
+For example, completing the required exercises while leaving the optional ones unfinished gives
+a green required `PASS` and yellow optional pending messages. You can move on, or return to the
+optional file whenever you want more practice. Colors appear in terminals with color enabled;
+the status words also appear in plain output.
+
+The optional goals are:
 
 1. Prove `or_swap (p q : Prop) (h : p ∨ q) : q ∨ p`. *Hint:* a proof of `∨` is built with `Or.inl` /
    `Or.inr`, and taken apart with `cases h with | inl hp => ... | inr hq => ...`. (Unlike `∧`, you must
    handle *both* ways the "or" could have been made.)
 2. Prove `add_zero' (n : Nat) : n + 0 = n`. *Hint:* recall §6 — which side is the definition?
    How short can the proof be?
-3. Prove `succ_eq (n : Nat) : n + 1 = Nat.succ n`. *Hint:* `rfl` may already work — why?
+3. **Prove associativity of addition by induction:**
+   `add_assoc' (a b n : Nat) : (a + b) + n = a + (b + n)`.
+   *Associativity* means that changing the grouping of three additions doesn't change their result.
+   For example, `(2 + 3) + 4` and `2 + (3 + 4)` both give `9`; your proof must work for all three
+   inputs, not just that example. Practice writing the induction yourself rather than invoking the
+   library's associativity theorem or an automatic arithmetic tactic.
+   *Hint:* keep `a` and `b` fixed and use induction on `n`, the final argument. In the successor
+   case, use the addition step equation more than once to expose the expression covered by your
+   induction hypothesis.
 
 ## 12. Corrections to the optional exercises
 
-Work them yourself first — then check. Each is explained, not just dropped.
+Try the exercises in `optional/Skeleton.lean` first, and check your proofs with
+`make lab C=00-foundations/00-setup`. Then compare your reasoning with the explanations below.
+The same worked proofs are available in **`optional/Solution.lean`**.
 
 ### Exercise 1 — `or_swap`
 
@@ -881,6 +916,20 @@ proved for you:
 theorem or_swap' (p q : Prop) (h : p ∨ q) : q ∨ p := h.symm
 ```
 
+There is no `by` here because `h.symm` is already a proof of the requested proposition `q ∨ p`.
+This is **term mode**, as in the pair we built directly in §4: after `:=`, we supply the proof itself.
+The name `symm` refers to symmetry — reversing the order of the two sides of the "or."
+Writing `by` instead opens a block of **tactics**, so we would need an instruction to supply that
+proof:
+
+```lean
+theorem or_swap' (p q : Prop) (h : p ∨ q) : q ∨ p := by
+  exact h.symm
+```
+
+These are two alternative ways to write the same theorem; choose one when putting it in a file.
+`by` introduces tactic instructions, while `h.symm` directly supplies a proof value.
+
 Reaching for an existing lemma instead of re-deriving it is the normal way to work in Lean. But building
 it by hand once, as above, is how you understand what that lemma *is*.
 
@@ -896,18 +945,50 @@ fires purely on the second argument being literally `0`. No induction, no rewrit
 `zero_add'` in §6, where the recursion is stuck on a variable and induction is unavoidable. Same-looking
 statements, opposite difficulty — and the definition is what tells them apart.
 
-### Exercise 3 — `succ_eq`
+### Exercise 3 — `add_assoc'`: associativity by induction
 
 ```lean
-theorem succ_eq (n : Nat) : n + 1 = Nat.succ n := rfl
+theorem add_assoc' (a b n : Nat) : (a + b) + n = a + (b + n) := by
+  induction n with
+  | zero => rfl
+  | succ k ih =>
+    rw [Nat.add_succ, Nat.add_succ, ih, Nat.add_succ]
 ```
 
-Also `rfl`, and unfolding *why* is satisfying. The numeral `1` is `Nat.succ 0`, so `n + 1` is really
-`n + Nat.succ 0`. The step equation `n + (m+1) = (n + m) + 1` rewrites that to `Nat.succ (n + 0)`, and
-`n + 0` is `n` by the base equation — so `n + 1` reduces, definitionally, all the way down to
-`Nat.succ n`. The kernel performs that reduction silently, and `rfl` closes the goal. This is also why
-Lean happily lets you write `n + 1` and `Nat.succ n` interchangeably: to the kernel they are *the same
-number*.
+We keep `a` and `b` arbitrary but fixed, and prove the claim for every `n`. A direct `rfl` can't
+finish the original goal: both additions involving the unknown `n` are stuck. Induction gives us
+the two shapes of `n` and, in the successor case, evidence for the smaller number.
+
+**Zero case.** Substitute `0` for `n`:
+
+```text
+⊢ (a + b) + 0 = a + (b + 0)
+```
+
+Adding zero on the right computes by definition. The left side becomes `a + b`, and the right side
+also becomes `a + b`, so `rfl` works in this case.
+
+**Successor case.** We have:
+
+```text
+ih : (a + b) + k = a + (b + k)
+⊢ (a + b) + Nat.succ k = a + (b + Nat.succ k)
+```
+
+The four entries in the rewrite list do these steps in order:
+
+1. The first `Nat.add_succ` unfolds the leftmost addition whose second argument is a successor:
+   the left side becomes `Nat.succ ((a + b) + k)`.
+2. The second `Nat.add_succ` unfolds `b + Nat.succ k` inside the right side, which becomes
+   `a + Nat.succ (b + k)`.
+3. `ih` replaces `(a + b) + k` inside the left side with `a + (b + k)`. The left side is now
+   `Nat.succ (a + (b + k))`.
+4. The final `Nat.add_succ` unfolds `a + Nat.succ (b + k)` on the right, making it
+   `Nat.succ (a + (b + k))` too. Both sides agree, so the goal closes.
+
+This exercise uses the same induction principle as §6, but the step requires tracking the definition
+through several nested additions. The induction hypothesis connects the smaller expressions; the
+successor rule carries that equality to the next number.
 
 > Audit your work with `#print axioms or_swap` (and the others) — each should report it depends on no
 > axioms, just like the keystones in §8.

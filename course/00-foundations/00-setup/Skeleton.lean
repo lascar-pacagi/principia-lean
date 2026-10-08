@@ -19,7 +19,6 @@ theorem and_reorder (p q r : Prop) (h : p ∧ (q ∧ r)) : q ∧ (p ∧ r) := by
     . exact h.2.2
 
 
-
 theorem sum_lt : 3 + 4 < 5 + 3 := by
   decide
 
