@@ -103,6 +103,9 @@ done" says exactly what graduates where.
    computational behavior + `#print axioms` the keystones); blank the proof bodies into
    `Skeleton.lean` (with `set_option warningAsError true` at the top) as bare `sorry` — no inline tips
    (graduated hints go in the explainer's "Hints for the skeleton" §).
+   Register each exercise's file and declaration name in `course/tooling/exercises.json` so
+   `make reset` can clear learner answers while preserving supplied definitions. Optional exercises
+   use `optional/Skeleton.lean` and `optional/Solution.lean`; register those exercise names too.
 5. Verify: `make test` green, `make lab C=<dir>` red→green, `make axioms` clean, `make explainer C=<dir>`
    renders. Then graduate verified code into `Principia/`.
 

@@ -7,6 +7,10 @@
 **/.lake/
 **/lake-packages/
 
+# Answers saved before resetting exercises
+/course/.exercise-backups/
+**/__pycache__/
+
 # Quarto / Typst render byproducts — regenerable via `make explainer` / `make docs`
 # (we commit the .qmd sources and the figs/, not the rendered output)
 **/.quarto/

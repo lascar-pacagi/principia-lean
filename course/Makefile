@@ -25,6 +25,12 @@ lab: build  ## check required exercises + report optional progress: make lab C=<
 	@test -n "$(C)" || { echo "usage: make lab C=<concept-dir>  (e.g. 00-foundations/00-setup)"; exit 2; }
 	@bash tooling/lab.sh "$(C)/Skeleton.lean"
 
+reset:  ## reset exercises to sorry (backup saved); optional C=<dir> or DRY_RUN=1
+	@python3 tooling/reset_exercises.py $(if $(C),--concept "$(C)",) $(if $(filter 1,$(DRY_RUN)),--dry-run,)
+
+test-reset:  ## check the exercise reset tool on temporary copies
+	@python3 -m unittest discover -s tooling -p 'test_reset_exercises.py'
+
 axioms:  ## honesty audit: no stray sorry/axiom; no sorryAx in keystones
 	@bash tooling/audit.sh
 
@@ -41,4 +47,4 @@ preview:  ## live-preview the docs
 clean:  ## remove Lean build artifacts
 	@lake clean
 
-.PHONY: help setup build test lab axioms explainer docs preview clean
+.PHONY: help setup build test lab reset test-reset axioms explainer docs preview clean

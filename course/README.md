@@ -13,6 +13,9 @@ make            # help
 make setup      # build the toolchain + library (run once)
 make test       # build the library + kernel-check every Solution.lean — GREEN
 make lab C=00-foundations/00-setup   # build a concept's skeleton — RED until you solve it
+make reset DRY_RUN=1                # preview resetting all exercises
+make reset                         # reset all exercises to sorry; save previous answers
+make reset C=00-foundations/00-setup # reset one lesson, including optional exercises
 make axioms     # honesty audit: no stray sorry/axiom, no sorryAx in keystones
 make explainer C=00-foundations/00-setup   # render a lesson → explainer.html + .pdf beside the source
 make docs                                   # render all lessons in place (HTML + PDF via Typst)
