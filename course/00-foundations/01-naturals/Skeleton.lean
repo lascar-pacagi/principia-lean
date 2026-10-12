@@ -2,7 +2,7 @@
 # 01-naturals — Skeleton  (THIS IS YOUR FILE)
 
 Build the naturals from nothing and prove their addition laws. The TYPE (`MyNat`) and the DEFINITION of
-addition (`add`) are GIVEN; your job is the six theorems below — replace each `sorry`.
+addition (`add`) and the three worked results are GIVEN; prove the three exercise theorems below.
 
 Run:  make lab C=00-foundations/01-naturals
 Try each cold. Stuck? See §5 "Prove it" and §6 "Hints for the skeleton" in `explainer.qmd`.
@@ -26,25 +26,33 @@ def add (m : MyNat) : MyNat → MyNat
 
 instance : Add MyNat := ⟨add⟩
 
-/-! Your six theorems. Prove them top to bottom — later ones may use earlier ones. -/
+/-! Given results from the lesson's worked examples. -/
 
-@[simp] theorem add_zero (m : MyNat) : m + zero = m := by
-  sorry
+@[simp] theorem add_zero (m : MyNat) : m + zero = m := rfl
 
-@[simp] theorem add_succ (m n : MyNat) : m + succ n = succ (m + n) := by
-  sorry
+@[simp] theorem add_succ (m n : MyNat) : m + succ n = succ (m + n) := rfl
 
 @[simp] theorem zero_add (n : MyNat) : zero + n = n := by
-  sorry
+  induction n with
+  | zero => rfl
+  | succ k ih => rw [add_succ, ih]
+
+/-! Your three exercises. Later ones may use earlier ones. -/
 
 @[simp] theorem succ_add (m n : MyNat) : succ m + n = succ (m + n) := by
-  sorry
+  induction n with
+  | zero => rw [add_zero, add_zero]
+  | succ k ih => rw [add_succ, ih, add_succ]
 
 theorem add_comm (m n : MyNat) : m + n = n + m := by
-  sorry
+  induction n with
+  | zero => rw [add_zero, zero_add]
+  | succ k ih => rw [add_succ, ih, succ_add]
 
 theorem add_assoc (a b c : MyNat) : a + b + c = a + (b + c) := by
-  sorry
+  induction c with
+  | zero => rw [add_zero, add_zero]
+  | succ k ih => rw [add_succ, ih, add_succ, add_succ]
 
 end MyNat
 end Course01

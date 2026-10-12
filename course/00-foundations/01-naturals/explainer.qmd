@@ -13,22 +13,51 @@ title: "01 — Building the natural numbers, and proving by induction"
 We use `2 + 3 = 3 + 2` without thinking. But *why* is addition commutative? Not "we checked some
 examples" — why is it true for **all** of the infinitely many naturals, with a proof a machine accepts?
 
-To answer honestly we can't lean on anything pre-built. So we'll construct the natural numbers from the
-absolute minimum, define `+` on them, and then *earn* every law — `0 + n = n`, associativity,
-commutativity — by proof. (If we used Lean's built-in `Nat`, the library would already contain all these
-and `simp` would close them in one line, teaching us nothing. Building our own `MyNat` makes the laws
-genuinely unproved.)
+To understand where these laws come from, we'll define our own natural-number type, `MyNat`, using
+zero and the successor operation. Then we'll define addition and prove its properties step by step:
+`0 + n = n`, associativity, and commutativity. This lets us follow the whole path from the definition
+of a number to the proof of an arithmetic law.
 
-## 2. The idea, from zero: Peano's two rules
+Lean's built-in `Nat` already comes with proofs of these properties. Using those theorems is useful
+in everyday Lean programming. Here, working with `MyNat` gives us practice constructing the proofs
+ourselves and seeing how they follow from the definitions, particularly through induction.
 
-Here is the whole of the natural numbers, due to Peano, in two rules:
+## 2. The idea, from zero: natural numbers in the Peano system
+
+The **Peano system** describes natural numbers through a small set of basic rules, called *axioms*.
+Its starting objects are zero and the **successor** operation: the successor of a number is the next
+number. Rather than assuming we already know how addition works, we begin with this simple chain:
+
+```text
+0 → 1 → 2 → 3 → ...
+```
+
+Each arrow means "take the successor." For example, `succ 0` is `1`, and `succ (succ 0)` is `2`.
+We can describe these numbers before defining addition.
+
+The rules say that zero is a natural number, every natural number has a successor, zero is not a
+successor, and equal successors must have equal predecessors. For example, `succ 2` cannot be zero;
+if `succ a = succ b`, then `a = b`. The system also includes **induction**: a property that holds
+at zero and is preserved by taking a successor holds for every natural number.
+
+Why use this approach here? It connects the way we **build numbers** to the way we **define
+functions and prove their properties**. To define addition, we handle zero and successors. To prove
+an addition law, we can use induction with those same two cases.
+
+**We'll work with just this part of the Peano approach:** building the natural numbers, defining
+addition, and proving its laws. We won't develop the full theory of arithmetic or study its axioms
+as a formal logical system in this lesson. In Lean, we'll express this part using an inductive type
+`MyNat`, whose constructors provide the starting point for recursion and induction.
+
+The two ways to build a value of `MyNat` are:
 
 1. `zero` is a natural number.
-2. if `n` is a natural number, then `succ n` ("the successor of `n`", i.e. `n + 1`) is one too.
+2. if `n` is a natural number, then `succ n` (the next number after `n`) is one too.
 
-That's it. Every natural number is reached by starting at `zero` and applying `succ` some number of
-times: `zero`, `succ zero`, `succ (succ zero)`, … — which we read as 0, 1, 2, …. There are no other
-naturals, and (crucially) two numbers built differently *are* different.
+Every value of this type is reached by starting at `zero` and applying `succ` some number of times:
+`zero`, `succ zero`, `succ (succ zero)`, … — which we read as 0, 1, 2, …. There are no other ways to
+build its values. Zero and successors are distinct, and a successor retains the number it was built
+from, so two different positions in this chain represent different numbers.
 
 This "built from constructors, nothing else" shape gives us two gifts at once:
 
@@ -43,24 +72,40 @@ the type has exactly those two constructors.
 
 ## 3. In Lean
 
+We'll build the number type, define addition, and follow a first induction proof. These worked
+examples give us tools for proving further laws ourselves.
+
 ### 3.1 Declaring the type
 
 ```lean
 inductive MyNat where
   | zero : MyNat
   | succ : MyNat → MyNat
+deriving Repr, DecidableEq
 ```
 
-`inductive` introduces a brand-new type by **listing its constructors** — the only ways to build a
-value. `zero : MyNat` is a constructor taking no arguments; `succ : MyNat → MyNat` takes a `MyNat` and
-gives a bigger one. From this single declaration Lean automatically generates the recursion principle
-and the induction principle described above. (In the skeleton you'll see `deriving Repr, DecidableEq` —
-that just asks Lean to auto-generate a printer and an equality test so we can `#eval` and `#guard`
-concrete numbers. Not part of the maths.)
+Read the declaration line by line:
+
+- `inductive MyNat where` introduces a new type by listing its constructors.
+- `| zero : MyNat` says that `zero` is a value of this type, requiring no input.
+- `| succ : MyNat → MyNat` says that `succ` takes one value of `MyNat` and builds another. The arrow
+  describes its input and output types. For example, `succ zero` represents one.
+- `deriving Repr, DecidableEq` asks Lean to generate two conveniences: a way to display values
+  (`Repr`) and a procedure for checking whether two values are equal (`DecidableEq`). They let us
+  run and inspect small examples later.
+
+The two constructors determine the structure of the type. Lean generates the corresponding
+recursion and induction principles, so we can define a function or prove a property by handling
+these two shapes.
+
+`MyNat` is a separate type from Lean's built-in `Nat`. We haven't taught Lean to interpret ordinary
+numerals as `MyNat` values, so we will write `zero`, `succ zero`, and `succ (succ zero)` in our code.
+In explanations, we may call those values zero, one, and two.
 
 ### 3.2 Defining addition by recursion
 
-How should `m + n` work? Recurse on `n` (the second argument):
+To add `m` to another number, count the successors in that second number. Adding zero returns `m`;
+adding a successor means adding its predecessor, then taking one more successor:
 
 ```lean
 def add (m : MyNat) : MyNat → MyNat
@@ -68,17 +113,39 @@ def add (m : MyNat) : MyNat → MyNat
   | .succ n => .succ (add m n)   -- m + (n+1) = (m + n) + 1
 ```
 
-Read the two lines as a definition by cases on the second argument: adding `zero` does nothing; adding
-`succ n` adds `n` and then takes one more successor. (`.zero`/`.succ` is shorthand for
-`MyNat.zero`/`MyNat.succ` when Lean already knows the type.) Finally we register it as the `+` notation:
+The signature `def add (m : MyNat) : MyNat → MyNat` supplies the first input `m` immediately and
+returns a function awaiting the second input. Thus `add m n` takes two numbers overall. The lines
+beginning with `|` describe the possible shapes of that second input; `=>` separates each pattern
+from the result to return.
+
+In the successor branch, `n` names the predecessor inside the input `.succ n`. Calling `add m n`
+uses a smaller second input, which is why the recursion terminates. `.zero` and `.succ` are shorthand
+for the constructors whose type Lean can infer here.
+
+Let's compute one plus two. Set `one = succ zero` and `two = succ (succ zero)` in this explanation:
+
+```text
+add one two
+= succ (add one (succ zero))   -- remove the outer successor from two
+= succ (succ (add one zero))   -- remove the remaining successor
+= succ (succ one)              -- adding zero returns the first input
+```
+
+The result is three: two successors around one. This is how addition computes, before we prove any
+of its general laws.
+
+Finally we let Lean use the familiar `+` notation for this function:
 
 ```lean
 instance : Add MyNat := ⟨add⟩
 ```
 
-Now `m + n` means `add m n`.
+`Add MyNat` is Lean's interface for addition on this type. `⟨add⟩` supplies the function that the
+interface needs, and `instance` makes that choice available automatically. Now `m + n` means
+`add m n`. This line establishes the notation; it doesn't assert that addition is commutative or
+associative. Those properties still need proofs.
 
-### 3.3 The defining equations are free: `rfl`
+### 3.3 Turning the defining equations into theorems: `rfl`
 
 The two lines of the definition give us two facts *by definition* — so they're provable by `rfl`
 (reflexivity up to computation, exactly as in `00-setup`):
@@ -88,18 +155,32 @@ The two lines of the definition give us two facts *by definition* — so they're
 @[simp] theorem add_succ (m n : MyNat) : m + succ n = succ (m + n) := rfl
 ```
 
-`m + zero` literally reduces to `m`, and `m + succ n` literally reduces to `succ (m + n)`, by the
-definition — no work, just `rfl`. (`@[simp]` tags these as automatic rewrite rules; we'll cash that in
-at the end.) These two are the *only* computation rules we get for free. Everything else is a theorem.
+These equations correspond directly to the two branches of `add`:
 
-> **The asymmetry, again.** `m + zero = m` is free (`rfl`) because `add` matches on its second argument
-> being `zero`. But `zero + n = n` is **not** free: now `zero` is the *first* argument and `n` is a
-> variable in the recursion slot, so nothing reduces. We have to prove it — by induction. Same shape,
-> opposite difficulty; the definition is what decides.
+| Expression | Branch of the definition | Result |
+|---|---|---|
+| `m + zero` | The second input is `zero` | `m` |
+| `m + succ n` | The second input is a successor | `succ (m + n)` |
+
+After reducing the left side using the definition, each goal has identical expressions on both
+sides, so `rfl` proves it. Here `:= rfl` supplies a proof directly in term mode. You could instead
+write `:= by rfl` to use the tactic of the same name.
+
+The prefix `@[simp]` attaches an **attribute** to a proved theorem: it registers that theorem as a
+simplification rule for the `simp` tactic. It doesn't prove the theorem or make Lean assume it.
+We'll use the registered rules in §3.6. The names `add_zero` and `add_succ` also let us request these
+particular rewrites ourselves with `rw`.
+
+> **Why does the side of zero matter?** To compute `m + zero`, Lean sees the second input's
+> constructor and can choose the zero branch. For `zero + n`, the second input is unknown: is `n`
+> zero, or a successor? The computation is stuck. The claim is true, but reducing the definition
+> alone doesn't establish it. Induction supplies the reasoning we need.
 
 ### 3.4 Proving `zero_add` by induction
 
-Goal: `zero + n = n` for every `n`. Induct on `n`:
+Our goal is `zero + n = n` for every `n : MyNat`. We choose induction on `n` because `add` examines
+this argument. Remember what the two branches mean: `zero` is the starting number; `succ k` is
+constructed from a smaller number `k`, for which induction supplies the hypothesis `ih`.
 
 ```lean
 @[simp] theorem zero_add (n : MyNat) : zero + n = n := by
@@ -108,115 +189,322 @@ Goal: `zero + n = n` for every `n`. Induct on `n`:
   | succ k ih => rw [add_succ, ih]
 ```
 
-- `induction n with` splits into the two constructor cases.
-- **`zero` case** — goal `zero + zero = zero`. By `add_zero` this is `zero = zero`: `rfl`.
-- **`succ k ih` case** — we prove it for `succ k`, and we're *handed* the induction hypothesis
-  `ih : zero + k = k`. Goal: `zero + succ k = succ k`.
-  - `rw [add_succ]` rewrites `zero + succ k` into `succ (zero + k)` (that's the `add_succ` equation).
-    Goal becomes `succ (zero + k) = succ k`.
-  - `rw [ih]` rewrites `zero + k` into `k`. Goal becomes `succ k = succ k`, which `rw` finishes
-    automatically.
+**Zero branch.** The goal is `⊢ zero + zero = zero`. The addition definition reduces the left side
+to `zero`, so `rfl` finishes it.
 
-That is the rhythm of nearly every proof here: **peel a `succ` with `add_succ`, then apply the induction
-hypothesis.** `rw [a, b]` just does the rewrites left-to-right.
+**Successor branch.** The initial state is:
 
-### 3.5 The other three laws
+```text
+k : MyNat
+ih : zero + k = k
+⊢ zero + succ k = succ k
+```
 
-Same engine, slightly longer chains. (You'll prove these; here's the shape to recognise.)
+Here `k` and `ih` are names we chose, while `zero` and `succ` identify the constructor cases.
+The hypothesis concerns `k`; the goal concerns `succ k`. To connect them, expose the smaller
+addition inside the goal:
+
+```text
+After rw [add_succ]:  ⊢ succ (zero + k) = succ k
+After rw [ih]:        ⊢ succ k = succ k
+```
+
+`rw [ih]` can replace `zero + k` even though it sits inside a call to `succ`: rewriting works on
+subexpressions too. Once both sides match, `rw` closes the goal by reflexivity.
+
+`rw [add_succ, ih]` combines these two successive steps. To inspect them separately in the editor,
+write them on separate lines in the branch:
+
+```lean
+  | succ k ih =>
+    rw [add_succ]
+    rw [ih]
+```
+
+Both tactics are indented under the same `=>` and act on that branch's goal. This is an alternative
+body for the successor branch above, not a separate theorem.
+
+This gives us a method to try in the next proofs: use the addition rule to expose a smaller
+expression, then use the induction hypothesis. In a list `rw [a, b]`, Lean applies the rule `a`
+first and the rule `b` second; the list's order doesn't designate the left and right sides of the goal.
+
+### 3.5 Combining known rules with `rw`
+
+A proved theorem can be used inside a larger expression. For example:
+
+```lean
+example (m n : MyNat) : (zero + m) + succ n = succ (m + n) := by
+  rw [zero_add, add_succ]
+```
+
+The first rewrite changes `zero + m` into `m`. The goal becomes
+`m + succ n = succ (m + n)`. The second rewrite uses the addition step equation, making both sides
+identical. We reused two established results without proving them again.
+
+This example also shows that rewriting can act inside an expression: `zero + m` was the first input
+of the outer addition. To understand a sequence of rewrites, inspect the goal after each step.
+
+### 3.6 `simp`: let the machine chain the rewrites
+
+The `simp` tactic automates simplification using registered theorems. It looks for expressions that
+match its rules, rewrites them, and continues simplifying. Unlike `rw [rule1, rule2]`, you don't
+specify a sequence of steps. You supply the goal, and `simp` uses the applicable rules it knows.
+
+We registered `add_zero`, `add_succ`, and `zero_add` with `@[simp]`. For example:
+
+```lean
+example (a b : MyNat) : (zero + a) + (b + zero) = a + b := by simp
+```
+
+The rule `zero_add` changes `zero + a` to `a`, and `add_zero` changes `b + zero` to `b`. The goal
+becomes `a + b = a + b`, which closes. This illustrates simplification under nested expressions:
+the rules can apply inside the outer addition.
+
+To see which facts this example actually needs, you can restrict the rule set:
+
+```lean
+example (a b : MyNat) : (zero + a) + (b + zero) = a + b := by
+  simp only [zero_add, add_zero]
+```
+
+`simp only [...]` uses the listed rules together with its basic simplification machinery. It lets
+us keep the dependencies of a short proof visible. Ordinary `simp` also has access to other
+registered simplification rules.
+
+**`simp` uses rules that have already been proved.** For example, after proving `zero_add` and
+registering it with `@[simp]`, we have the rule:
+
+```text
+zero + n → n
+```
+
+`simp` can then replace `zero + a` with `a`, even inside a larger expression. It uses our existing
+proof of `zero_add`; it doesn't need to prove that law again.
+
+Now consider a different claim:
+
+```text
+a + b = b + a
+```
+
+Removing zeros doesn't justify exchanging these two arbitrary inputs. To establish that equality,
+we need a new proof: the proof of **commutativity**. `simp` doesn't build that induction proof for
+us from the definition of addition.
+
+So `simp` automates the use of established rules, such as removing a zero from an addition.
+In the next exercises, you will prove new rules: why we can exchange the numbers being added and
+why we can change the placement of parentheses.
+
+## 4. Why none of this is circular
+
+It may feel as though `add_zero` and `add_succ` assume the properties we want to prove. They are
+statements of what our function does in its two branches. For instance, the function returns `m`
+when its second input is `zero`, so `m + zero = m` follows directly from computation.
+
+Commutativity is a different kind of claim: the definition doesn't contain a branch saying "you may
+swap the inputs." That claim needs a proof using the behavior of the function and earlier established facts.
+The exercises will develop the following dependency chain:
+
+```text
+MyNat and the definition of add
+  → add_zero and add_succ, by computation
+  → zero_add and succ_add, by induction
+  → add_comm, using those earlier laws
+```
+
+Associativity can also be proved by induction, using the addition rule and an induction hypothesis. In
+each successor case, the hypothesis concerns the smaller number `k`; it doesn't assume the very
+goal we are trying to prove for `succ k`. That distinction is what makes the reasoning valid.
+
+You can inspect the assumptions of the completed results with `#print axioms add_comm` and
+`#print axioms add_assoc`. The supplied solutions depend on no axioms. A proof using `simp` may
+have a different axiom footprint, so inspect that particular theorem rather than inferring its
+dependencies from the tactic's name.
+
+## 5. Prove it
+
+Open `Skeleton.lean`. The definitions and the three worked results — `add_zero`, `add_succ`, and
+`zero_add` — are provided. Work through the exercises in order; a later exercise may use a result
+you proved earlier.
+
+The file uses `namespace Course01` to group the lesson's names, then `namespace MyNat` for the
+addition definitions and theorems. A **namespace** groups names: inside this one, `zero` and `succ`
+refer to `Course01.MyNat.zero` and `Course01.MyNat.succ`. You can leave this organization as it is
+and work in the theorem proof bodies.
+
+Check your proofs with:
+
+```bash
+make lab C=00-foundations/01-naturals
+```
+
+1. **Move a successor out of the first input:**
+   `succ_add (m n : MyNat) : succ m + n = succ (m + n)`.
+   The defining equation handles a successor in the second input. Establish the corresponding
+   property for the first input.
+2. **Swap the inputs:** `add_comm (m n : MyNat) : m + n = n + m`.
+   This is commutativity: the order of the two numbers doesn't affect the sum.
+3. **Change the grouping:**
+   `add_assoc (a b c : MyNat) : a + b + c = a + (b + c)`.
+   This is associativity. Remember that `a + b + c` means `(a + b) + c`.
+
+The skeleton gives the statements and leaves their proofs as `sorry`. Try each goal before reading
+§6's hints. Full worked corrections are in §7 and `Solution.lean`.
+
+## 6. Hints for the skeleton
+
+Take the smallest hint that unblocks you, then return to your proof.
+
+**1. `succ_add`.**
+
+- *Nudge:* which input does `add` inspect? Choose an induction variable that makes that input's
+  shape known in each branch.
+- *More:* induct on `n`, keeping `m` fixed. Write the induction hypothesis and the successor goal
+  before choosing a rewrite.
+- *Next step:* the addition rule can expose the smaller sum on the left. After using the induction
+  hypothesis, compare it with the expression on the right.
+
+**2. `add_comm`.**
+
+- *Nudge:* try induction on the second input. Check both sides of the zero-case equality: can each
+  be reduced by the definition alone?
+- *More:* use `zero_add` where computation gets stuck in the base case. In the successor case,
+  identify the smaller sum covered by the induction hypothesis.
+- *Next step:* one side has a successor in the second input; the other has one in the first input.
+  You now have a proved rule for each situation.
+
+**3. `add_assoc`.**
+
+- *Nudge:* keep `a` and `b` fixed and induct on `c`.
+- *More:* in the successor branch, write the hypothesis for `k` and the goal for `succ k` with all
+  parentheses visible. Which occurrences of addition can use `add_succ`?
+- *Next step:* the right side contains nested additions. Unfold their successor cases until the
+  smaller expressions on both sides match the shape of the induction hypothesis.
+
+## 7. Corrections to the required exercises
+
+Read this section after trying the three exercises. The same proofs are in `Solution.lean`.
+Each explanation follows how the definition and earlier results change the goal.
+
+### Moving a successor out of the first input: `succ_add`
+
+`add_succ` describes a successor in the **second** input. We now want the corresponding law for the
+**first** input: `succ m + n = succ (m + n)`. It isn't a defining equation, so we prove it by
+induction on the second input `n`.
 
 ```lean
 @[simp] theorem succ_add (m n : MyNat) : succ m + n = succ (m + n) := by
   induction n with
   | zero      => rfl
   | succ k ih => rw [add_succ, ih, add_succ]
+```
 
+The zero case computes to `succ m = succ m`. In the successor case, our state is:
+
+```text
+ih : succ m + k = succ (m + k)
+⊢ succ m + succ k = succ (m + succ k)
+```
+
+Follow the rewrite list:
+
+1. `add_succ` unfolds the addition on the left, giving
+   `succ (succ m + k) = succ (m + succ k)`.
+2. `ih` replaces the smaller addition `succ m + k`, giving
+   `succ (succ (m + k)) = succ (m + succ k)`.
+3. `add_succ` unfolds the addition inside the right side, making it `succ (succ (m + k))` too.
+
+The repeated theorem name isn't redundant: the first use works on the left; the last works inside
+the right. Each use is chosen against the goal as it stands at that step.
+
+### Swapping the inputs: `add_comm`
+
+**Commutativity** means `m + n = n + m`. We induct on `n`, keeping `m` fixed:
+
+```lean
 theorem add_comm (m n : MyNat) : m + n = n + m := by
   induction n with
-  | zero      => rw [add_zero, zero_add]      -- m + 0 = m = 0 + m
-  | succ k ih => rw [add_succ, ih, succ_add]  -- m+(k+1) = (m+k)+1 = (k+m)+1 = (k+1)+m
+  | zero      => rw [add_zero, zero_add]
+  | succ k ih => rw [add_succ, ih, succ_add]
+```
 
+In the zero branch, the goal is `m + zero = zero + m`. The left side reduces to `m`, but the right
+side is stuck on the unknown second input `m`. That's why `rfl` alone doesn't work. `add_zero`
+rewrites the left side, and the proved theorem `zero_add` rewrites the right side. We finish with
+`m = m`.
+
+In the successor branch:
+
+```text
+ih : m + k = k + m
+⊢ m + succ k = succ k + m
+```
+
+`add_succ` changes the left side into `succ (m + k)`. The hypothesis `ih` then changes it into
+`succ (k + m)`. On the right, `succ_add` changes `succ k + m` into that same expression. Notice why
+we needed `succ_add` first: addition's defining successor rule cannot handle a successor in the
+first input by itself.
+
+### Changing the grouping: `add_assoc`
+
+**Associativity** means that `(a + b) + c = a + (b + c)`. The order of the inputs stays the same;
+only the parentheses move. Without parentheses, `a + b + c` means `(a + b) + c`.
+
+```lean
 theorem add_assoc (a b c : MyNat) : a + b + c = a + (b + c) := by
   induction c with
   | zero      => rw [add_zero, add_zero]
   | succ k ih => rw [add_succ, add_succ, add_succ, ih]
 ```
 
-Two things worth noticing. In `add_comm` the *base case isn't `rfl`* — `m + zero` and `zero + m` are
-both equal to `m`, but only after using `add_zero` (free) **and** `zero_add` (which we had to prove
-first). And `add_comm` leans on `succ_add`: laws build on laws, so order matters — prove them top to
-bottom. (`a + b + c` means `(a + b) + c`; `+` groups to the left.)
+We induct on `c`, keeping `a` and `b` fixed. In the zero case, the two uses of `add_zero` remove
+the final zero on the left and the zero inside the right, leaving `a + b = a + b`.
 
-### 3.6 `simp`: let the machine chain the rewrites
+In the successor case, we have:
 
-Doing `rw` by hand teaches you the moves, but it's tedious. `simp` ("simplify") repeatedly applies every
-lemma tagged `@[simp]` until nothing changes. Because we tagged `add_zero`, `add_succ`, `zero_add`,
-`succ_add`, a goal that's just a tangle of those collapses on its own:
-
-```lean
-example (a b : MyNat) : (zero + a) + (b + zero) = a + b := by simp
+```text
+ih : (a + b) + k = a + (b + k)
+⊢ (a + b) + succ k = a + (b + succ k)
 ```
 
-`simp` rewrites `zero + a → a` and `b + zero → b`, leaving `a + b = a + b`, done. You'll meet `simp`
-constantly; for now the lesson is just *what it does* — automate chains of known rewrites. (Curiously,
-`simp`'s internal machinery uses the axiom `propext`, so a `simp` proof's `#print axioms` lists it, while
-our hand `rw` proofs list nothing. Both are fine — `propext` is one of Lean's three accepted axioms.)
+The three uses of `add_succ` expose the smaller additions:
 
-## 4. Why none of this is circular
-
-It can feel like we "assumed" addition works. We didn't: we *defined* `add` with two equations and
-derived everything else. The only things taken as given are the type's two constructors and the
-definition's two lines — and from those, `induction` does all the lifting. That's the whole point of
-building from Peano: the laws of arithmetic are theorems, not assumptions.
-
-## 5. Prove it
-
-Open `Skeleton.lean`. The type `MyNat` and the definition `add` are given; prove the six theorems, top
-to bottom (later ones use earlier ones). Check with:
-
-```bash
-make lab C=00-foundations/01-naturals
+```text
+After the first:  ⊢ succ ((a + b) + k) = a + (b + succ k)
+After the second: ⊢ succ ((a + b) + k) = a + succ (b + k)
+After the third:  ⊢ succ ((a + b) + k) = succ (a + (b + k))
 ```
 
-1. `add_zero (m) : m + zero = m`
-2. `add_succ (m n) : m + succ n = succ (m + n)`
-3. `zero_add (n) : zero + n = n`
-4. `succ_add (m n) : succ m + n = succ (m + n)`
-5. `add_comm (m n) : m + n = n + m`
-6. `add_assoc (a b c) : a + b + c = a + (b + c)`
+Now `ih` replaces `(a + b) + k` with `a + (b + k)` inside the left successor. Both sides match,
+and the proof is complete. We needed three rewrites because the goal contains three additions
+whose second input becomes visibly a successor, one after another.
 
-Try each cold — the skeleton gives you only the statements. §3 has every technique you need; §6 has
-graduated hints; `Solution.lean` is the last resort (read it to understand, not to copy).
+## 8. Exercises (optional, for fluency)
 
-## 6. Hints for the skeleton
-
-Take the smallest hint that unblocks you.
-
-**1–2 (`add_zero`, `add_succ`).** These are the two lines of the *definition* of `add`, read back as
-equations. *Nudge:* nothing to prove — they hold by definition. Which zero-effort tactic from `00-setup`
-closes a goal that's true by computation?
-
-**3 (`zero_add`).** *Nudge:* `zero` is now the first argument, so it can't just compute — induct on `n`
-(§3.3 is this exact proof). *More:* base case is `rfl`; step is `rw [add_succ, ih]`.
-
-**4 (`succ_add`).** *Nudge:* induct on `n`; the step needs to peel a `succ` on each side. *More:* step is
-`rw [add_succ, ih, add_succ]` — peel the left, apply `ih`, peel the right.
-
-**5 (`add_comm`).** *Nudge:* induct on `n`. The base case is *not* `rfl` — you need both `add_zero` and
-the `zero_add` you just proved. The step will want `succ_add`. *More:* base `rw [add_zero, zero_add]`;
-step `rw [add_succ, ih, succ_add]`.
-
-**6 (`add_assoc`).** *Nudge:* induct on `c`; `a + b + c` means `(a + b) + c`. *More:* base
-`rw [add_zero, add_zero]`; the step peels three successors then applies `ih`.
-
-## 7. Exercises (optional, for fluency)
+These goals are different from the worked proofs: they ask you to combine the laws you've
+established. Open `optional/Skeleton.lean`. It supplies the same number construction and the six
+proved laws, followed by two proof placeholders. You can use those given results in your answers.
+Check progress with `make lab C=00-foundations/01-naturals`: required exercises determine whether
+the lab passes; unfinished optional exercises appear separately in yellow.
 
 1. `add_right_comm (a b c : MyNat) : a + b + c = a + c + b`. *Hint:* don't induct — rearrange with
    `add_assoc` and `add_comm`. You'll need a *backwards* rewrite `rw [← add_assoc]` (the `←` rewrites
    right-to-left), and you can target a specific spot by giving arguments, e.g. `add_comm b c`.
-2. Prove `(a + zero) + (zero + b) = a + b` with a **single** tactic. *Hint:* the `@[simp]` lemmas already
-   know everything needed.
+2. Prove the following statement with a **single** tactic:
 
-## 8. Corrections to the optional exercises
+   ```lean
+   theorem add_two_successors (a b : MyNat) :
+       succ (a + zero) + (zero + succ b) =
+         succ (succ (a + b)) := ...
+   ```
+
+   *Hint:* first identify the zeros to remove, then the additions involving successors. The proved
+   rules tagged `@[simp]` cover these operations.
+
+## 9. Corrections to the optional exercises
+
+Try the optional skeleton before reading on. The checked answer key is `optional/Solution.lean`;
+the explanations below follow how each proof changes the goal.
 
 ### Exercise 1 — `add_right_comm`
 
@@ -229,28 +517,41 @@ Watch the goal move. Start: `(a + b) + c = (a + c) + b`.
 
 - `rw [add_assoc]` regroups the left side: `(a + b) + c → a + (b + c)`. Goal: `a + (b + c) = (a + c) + b`.
 - `rw [add_comm b c]` — note the explicit arguments, which pin the rewrite to the `b + c` subterm
-  (without them `rw` would grab the first `_ + _` it finds). `b + c → c + b`. Goal: `a + (c + b) = (a + c) + b`.
+  (without them, the outer addition would also be a candidate for swapping). `b + c → c + b`.
+  Goal: `a + (c + b) = (a + c) + b`.
 - `rw [← add_assoc]` rewrites *backwards*: it turns `a + (c + b)` back into `(a + c) + b`. Goal:
-  `(a + c) + b = (a + c) + b`, closed. The `←` flips the lemma's direction — indispensable when you want
-  to *introduce* a grouping rather than remove one.
+  `(a + c) + b = (a + c) + b`, closed. The `←` reverses the theorem's direction, letting us return
+  to the grouping requested by the goal. It doesn't select a particular
+  side of the equality in the goal.
+
+The explicit arguments in `add_comm b c` deserve attention. `add_comm` is a theorem for any two
+numbers. Supplying `b` and `c` specializes it to the equality `b + c = c + b`, which is the inner
+addition we want to change. The surrounding `a + (...)` stays in place.
 
 ### Exercise 2 — one-tactic simplification
 
 ```lean
-example (a b : MyNat) : (a + zero) + (zero + b) = a + b := by simp
+theorem add_two_successors (a b : MyNat) :
+    succ (a + zero) + (zero + succ b) = succ (succ (a + b)) := by
+  simp
 ```
 
-`simp` applies the tagged lemmas until nothing changes: `a + zero → a` (by `add_zero`) and `zero + b → b`
-(by `zero_add`), leaving `a + b = a + b`. This is the payoff of tagging the basic equations `@[simp]` in
-§3 — routine rearrangements vanish, and you save `rw` for the steps that actually need thought.
+`simp` first removes the zeros using `add_zero` and `zero_add`. The left side becomes
+`succ a + succ b`. Using `add_succ` exposes `succ (succ a + b)`, and `succ_add` changes the smaller
+sum inside it, yielding `succ (succ (a + b))`. The right side is already that expression.
 
-## 9. Going further
+All four rules have been proved and registered. Simplification combines them under the nested
+successors; it doesn't require a fresh induction argument. To make the rule set explicit, you can
+also write `simp only [add_zero, zero_add, add_succ, succ_add]`.
 
-- **Natural Number Game** — `../../references/NNG4` (or play at
-  [adam.math.hhu.de](https://adam.math.hhu.de)). You've just rebuilt its *Addition World*; its
+## 10. Going further
+
+- **Natural Number Game** — the local reference copy at `../../../references/NNG4`, if available, or play at
+  [adam.math.hhu.de](https://adam.math.hhu.de). You've just rebuilt its *Addition World*; its
   *Multiplication* and *Power* worlds extend the same method (define by recursion, prove by induction)
   and make excellent extra practice.
-- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, the *Inductive Types* and
+- **Theorem Proving in Lean 4** — the local reference copy at `../../../references/theorem_proving_in_lean4`,
+  if available: read the *Inductive Types* and
   *Induction and Recursion* chapters, for the full story behind `inductive` and the recursor.
 - **Next:** Course 0.2 turns to *propositions* — `→ ∧ ∨ ¬ ∀ ∃` and the tactics that build and break
   them apart — the logic we'll formalize a prover for in Course 1.

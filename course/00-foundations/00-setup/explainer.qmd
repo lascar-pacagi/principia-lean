@@ -241,7 +241,43 @@ a proof of `q`. You build one with the *anonymous constructor* `⟨_, _⟩` (typ
 `\>` in the editor), and you take it apart with `.1` (the first field) and `.2` (the second). So from
 `h : p ∧ q` we have `h.1 : p` and `h.2 : q`.
 
-### Term-mode proof (build the value directly)
+### Two ways to write a proof: term mode and tactic mode
+
+In **term mode**, we directly supply an expression whose type is the proposition we want to prove.
+A *term* is an expression representing a value; here, that value is a proof.
+
+For a small example, suppose we already have `hp : p` and `hq : q`. These names are our choice:
+`hp` names a proof of `p`, and `hq` names a proof of `q`. We can prove `p ∧ q` by supplying the pair:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q :=
+  ⟨hp, hq⟩
+```
+
+After `:=`, we give the proof itself: `⟨hp, hq⟩`. Its first component proves `p`, its second proves
+`q`, so the whole expression has type `p ∧ q`. There is no `by` because we are supplying a value
+directly. `example` asks Lean to check the proof without giving the result a theorem name.
+
+In **tactic mode**, we write instructions that construct a proof. The same claim can be proved this way:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  constructor
+  · exact hp
+  · exact hq
+```
+
+Here `by` opens a block of tactics. `constructor` asks for the two components of the conjunction;
+the first `exact` supplies `hp`, and the second supplies `hq`. The instructions build the same pair
+`⟨hp, hq⟩` we wrote directly above. We'll walk through these tactics in detail below.
+
+**Term mode: supply the proof. Tactic mode: give the steps to construct it.** In both cases, Lean
+checks the resulting proof against the proposition's type. These are two ways to write a proof,
+with the same standard of checking.
+
+### Term-mode proof of `and_swap` (build the value directly)
+
+Now apply the direct style to our claim about swapping a conjunction:
 
 ```lean
 theorem and_swap (p q : Prop) (h : p ∧ q) : q ∧ p := ⟨h.2, h.1⟩
