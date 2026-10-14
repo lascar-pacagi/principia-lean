@@ -5,80 +5,249 @@ title: "02 — Propositions: the connectives, and how to build and break them"
 > **Where you are.** You've proved equalities by `rfl`/`rw` and facts about all naturals by
 > `induction`. Now we turn to **logic itself**: statements built with "implies", "and", "or", "not",
 > "iff", "for all", "there exists". For each connective you'll learn its *two moves* — how to **build**
-> a proof and how to **use** one — and the tactics that perform them. That build/use pairing is
-> precisely **natural deduction**, the proof system we formalize a prover for in Course 1. So this is
-> both your logic toolkit and your first look at the thing Course 1 is about.
+> a proof and how to **use** one — and the tactics that perform them. These rules form the logical
+> toolkit we'll later use to build a natural-deduction prover.
 
 ## 1. The question
 
-In `01-naturals` every goal was an equation. But most of mathematics is statements *connected* by logic:
-"*if* `n` is even *then* `n+2` is even", "`x = 0` *or* `x ≠ 0`", "*for all* `n`, *there exists* a prime
-above it." How do you prove a statement shaped like `p → (q ∧ r)`? You don't memorize a hundred tricks —
-you learn, for **each connective**, the same two questions:
+In the previous lesson, we proved equalities about addition. We also used phrases such as "for every
+number" and "assuming the property holds for the smaller number." Those phrases already express
+logical reasoning. This lesson looks directly at how such reasoning works.
 
-- **Introduction:** how do I *build* a proof of a statement with this connective on the outside?
-- **Elimination:** given a proof with this connective on the outside, how do I *use* it?
+Consider this claim:
 
-Two moves per connective. That's the whole game, and it's astonishingly uniform.
+> **If** a natural number is a multiple of six, **then** it is a multiple of two **and** a multiple
+> of three.
 
-## 2. The idea: every connective is a type with an intro rule and an elim rule
+For example, twelve is six times two, two times six, and three times four. But checking twelve
+doesn't prove the claim for every number. We need a method that starts with evidence of being a
+multiple of six and produces evidence for both conclusions.
 
-Recall the `00-setup` slogan: **a proposition is a type, and a proof is a value of that type.** Each
-connective is a way of *forming* a new proposition-type out of others, and comes with:
+Notice that the claim tells us what shape the proof must have:
 
-- an **introduction** rule — the constructor(s) that *make* a value of that type, and
-- an **elimination** rule — the way to *consume* such a value.
+- **"If … then …"** asks for a method: given a proof of the premise, produce a proof of the conclusion.
+- **"And"** asks for two pieces of evidence: one for each part of the conclusion.
 
-You already saw this for `∧`: a proof of `p ∧ q` is *built* by pairing (`⟨_, _⟩`) and *used* by
-projecting (`.1`, `.2`). Every connective follows the same script. Here's the whole map; the rest of the
-lesson fills it in:
+To focus on this structure, give the three claims short names:
 
-| Proposition | **Build it** (introduction) | **Use it** (elimination) |
+| Name | Claim about the number |
+|---|---|
+| `p` | It is a multiple of six. |
+| `q` | It is a multiple of two. |
+| `r` | It is a multiple of three. |
+
+The whole statement has the form `p → (q ∧ r)`. Here `→` means "implies" and `∧` means "and."
+The parentheses group the two conclusions together. To prove it, we would accept evidence of `p`
+and use it to construct both a proof of `q` and a proof of `r`. We aren't proving this arithmetic
+claim in Lean yet; it illustrates how the words in a statement organize the work of proving it.
+
+Now suppose someone has already given us a proof of `q ∧ r`. Our task is different: we can extract
+the proof of `q`, the proof of `r`, or both, and use them in another argument. We don't need to
+establish the conjunction again.
+
+This gives us the two questions we'll ask for each logical construction:
+
+- **How do I prove it?** What evidence must I supply? This is called **introduction**. For an "and,"
+  we supply both proofs.
+- **How do I use a proof of it?** What evidence can I obtain, or what conclusion can I draw? This
+  is called **elimination**. For an "and," we extract its component proofs. "Elimination" means
+  using the logical construction; it doesn't mean deleting or rejecting the evidence.
+
+The words "and," "or," and "implies" are called **logical connectives**: they combine propositions
+into larger propositions. We will study each one's proof rules, then the related constructions
+"for all" and "there exists." The aim is to read a goal and understand what evidence it asks for,
+and to read a hypothesis and understand how its evidence can help.
+
+## 2. The idea: proving a claim and using a proof are different tasks
+
+Let's stay with **"and"** before introducing the other connectives. Write `p` for "the number is
+a multiple of two" and `q` for "the number is a multiple of three." Then:
+
+```text
+p ∧ q = the number is a multiple of two AND a multiple of three
+```
+
+The letters name the claims, not their proofs. Writing `p : Prop` says that `p` is a proposition;
+writing `hp : p` says that `hp` is evidence for that proposition.
+
+Now consider two different situations involving the same statement `p ∧ q`.
+
+### Situation A: we need to prove the "and"
+
+Suppose we already have a proof of `p`, named `hp`, and a proof of `q`, named `hq`. Our goal is to
+prove that both claims hold:
+
+```text
+hp : p       — evidence that the number is a multiple of two
+hq : q       — evidence that the number is a multiple of three
+⊢ p ∧ q      — we must provide evidence for both claims together
+```
+
+The turnstile `⊢` marks the goal: what we still need to produce. We have all the necessary evidence;
+we need to assemble it. A proof of an "and" contains both component proofs, so we put `hp` and `hq`
+together as the pair `⟨hp, hq⟩`.
+
+This step is called **conjunction introduction**. We introduce the "and" into our conclusion by
+combining its two proofs. The word "introduction" names this construction; it doesn't mean that
+we introduce a new assumption or simply declare the claim true.
+
+### Situation B: we already have a proof of the "and"
+
+Now suppose someone has supplied `h : p ∧ q`, and our goal is only `p`:
+
+```text
+h : p ∧ q    — evidence for both claims is already available
+⊢ p          — we need evidence that the number is a multiple of two
+```
+
+The proof `h` already contains what we need. Its first component, `h.1`, proves `p`. Taking that
+component finishes the goal. Similarly, its second component, `h.2`, could finish a goal of `q`.
+
+This step is called **conjunction elimination**. We use the combined evidence to extract evidence
+for one component. Nothing is discarded from the context; "elimination" names how we use the
+logical construction rather than how we erase a hypothesis.
+
+### Why the distinction matters
+
+The same proposition can be **what we must prove** or **evidence we can use**:
+
+| Situation | Question | Action for an "and" |
 |---|---|---|
-| `p → q` | `intro h`, then prove `q` (a function) | apply it: `f hp`, or tactic `apply f` |
-| `p ∧ q` | `⟨_, _⟩` or `constructor` | `h.1`, `h.2`, or `obtain ⟨hp, hq⟩ := h` |
-| `p ∨ q` | `Or.inl _` / `Or.inr _`, or `left` / `right` | `cases h with | inl hp => … | inr hq => …` |
-| `¬ p` (= `p → False`) | `intro hp`, then derive `False` | feed it a proof of `p` to get `False` |
-| `False` | — (no way to build one honestly) | `False.elim` / `exfalso` — anything follows |
-| `True` | `trivial` (or `True.intro`) | — (carries no information) |
-| `p ↔ q` | `⟨_, _⟩` or `constructor` (two directions) | `.mp` (`p→q`), `.mpr` (`q→p`) |
-| `∀ x, P x` | `intro x`, then prove `P x` | apply to a term: `h a : P a` |
-| `∃ x, P x` | `⟨a, _⟩` — give a witness `a` and a proof | `obtain ⟨x, hx⟩ := h` |
+| `p ∧ q` is the goal | What evidence must I supply? | Combine a proof of `p` with a proof of `q`. |
+| `h : p ∧ q` is available | What evidence does this give me? | Extract the proof of `p` or the proof of `q`. |
 
-> **This table *is* natural deduction.** Logicians write these as inference rules named `∧I`/`∧E`,
-> `→I`/`→E` (modus ponens), `∨I`/`∨E`, and so on. In Lean they're built into the type theory and we
-> invoke them with tactics. In **Course 1** we'll make a natural-deduction system a *first-class object*
-> — the rules become data, we write a prover that *searches* for derivations built from them, and we
-> *prove that prover sound*. Keep this table in mind; you're about to formalize it.
+This is why we inspect both the goal and the hypotheses before choosing a tactic. An "and" in the
+goal calls for building a pair; an "and" in a hypothesis gives us a pair to use.
+
+The structure tells us what evidence is required, but it doesn't supply missing evidence. If we
+have only `hp : p`, we still need a proof of `q` to establish `p ∧ q`.
+
+Each of the other connectives has its own ways to construct and use evidence. For an implication,
+we build or apply a proof-function; for an "or," we select an alternative or handle its two possible
+cases. These rules are part of **natural deduction**: reasoning by explicit steps from available
+evidence. The next section explains them individually, with Lean examples. A summary table follows
+those examples so you can use it as a reference.
 
 ## 3. In Lean, connective by connective
 
-For each one: the intro move, the elim move, a tiny worked example. (The examples here are deliberately
-*different* from your six goals — they teach the move so you can apply it yourself.)
+We'll read each connective, construct a small proof, and see how to use its evidence. In the code,
+`hp` usually names a proof of `p`, while `hpq` names a proof of `p → q`. These are names we choose,
+not Lean keywords. As before, `example` asks Lean to check a proof without naming the result.
 
 ### 3.1 Implication `→` — proofs are functions
 
-A proof of `p → q` is literally a **function** turning a proof of `p` into a proof of `q`.
+A proof of `p → q` is a **function** turning a proof of `p` into a proof of `q`. Proving it doesn't
+require establishing `p` on its own: we promise to produce `q` whenever someone supplies evidence
+for `p`.
 
 - **Build:** `intro h` assumes `h : p` and leaves you proving `q`.
 - **Use:** if `f : p → q` and `hp : p`, then `f hp : q` (function application). In tactic mode,
   `apply f` reduces a goal `q` to the goal `p`.
 
+For the simplest example, any proof of `p` can be returned as a proof of `p`:
+
 ```lean
 example (p : Prop) : p → p := by
-  intro h     -- assume h : p; goal becomes ⊢ p
-  exact h
-
--- modus ponens: using an implication
-example (p q : Prop) (hp : p) (hpq : p → q) : q := hpq hp
+  intro hp
+  exact hp
 ```
 
-`apply` is the "work backwards" version: to prove `q` using `hpq : p → q`, `apply hpq` changes the goal
-to `p`.
+The initial goal is `⊢ p → p`. After `intro hp`, the state becomes:
+
+```text
+hp : p
+⊢ p
+```
+
+`intro` names the incoming proof and leaves the promised output as the new goal. `exact hp`
+supplies that output. In term mode, the same proof is `fun hp => hp`: **`fun` builds a function**,
+the name before `=>` is its input, and the expression after `=>` is its output.
+
+To use an implication we already have, supply its input:
+
+```lean
+example (p q : Prop) (hp : p) (hpq : p → q) : q :=
+  hpq hp
+```
+
+`hpq hp` applies the proof-function `hpq` to the proof `hp`; its result has type `q`. In tactic
+mode, we can supply this expression directly with **`exact`**:
+
+```lean
+example (p q : Prop) (hp : p) (hpq : p → q) : q := by
+  exact hpq hp
+```
+
+Read the line in two stages: **`hpq hp` produces a proof of `q`**, then **`exact` uses that proof
+to finish the current goal `q`**. The expression after `exact` doesn't have to be a single name;
+it can be a function application that produces the required evidence.
+
+For example, if the function is named `fromP` and has type `p → r`, then `fromP hp` has type `r`.
+With a current goal of `r`, `exact fromP hp` finishes it in exactly the same way. The types tell
+us whether the application fits the goal; the names are our choice.
+
+Another tactic-mode version works backwards with **`apply`**:
+
+```lean
+example (p q : Prop) (hp : p) (hpq : p → q) : q := by
+  apply hpq
+  exact hp
+```
+
+Here `apply hpq` works backwards from the goal `q`: "this function can produce `q` if I supply
+`p`." The new goal is `⊢ p`, which `exact hp` closes. `intro` handles an implication we must
+prove; `apply` uses a function whose output matches the current goal.
+
+#### Use an implication to establish an intermediate fact: `have`
+
+We can also reason forwards: apply a proof-function, give its result a name, then use that result
+in the next step. The tactic **`have`** adds a proved fact to the local context without changing
+the current goal.
+
+For example, suppose our goal is `q ∧ p`, and we have `hp : p` and `hpq : p → q`:
+
+```lean
+example (p q : Prop) (hp : p) (hpq : p → q) : q ∧ p := by
+  have hq : q := hpq hp
+  exact ⟨hq, hp⟩
+```
+
+Read the `have` line in three parts:
+
+- `have hq`: give the intermediate proof the name `hq`, which we choose.
+- `: q`: specify the proposition that this proof must establish.
+- `:= hpq hp`: supply the proof. Applying `hpq : p → q` to `hp : p` produces evidence of `q`.
+
+Lean checks that the supplied expression has type `q`. The states before and after this line are:
+
+```text
+Before have:             After have:
+hp : p                   hp : p
+hpq : p → q              hpq : p → q
+                         hq : q
+⊢ q ∧ p                  ⊢ q ∧ p
+```
+
+The goal hasn't changed. We now have a named proof of `q`, which we can combine with `hp` to
+construct the requested pair. In this example, we **use** an implication to obtain intermediate
+evidence, then **build** the conjunction required by the goal.
+
+This also explains why writing just `hpq hp` on a line inside `by` doesn't work: it is a proof
+expression, not a tactic instruction. Choose the instruction according to what you want to do:
+
+| Instruction | Effect |
+|---|---|
+| `exact hpq hp` | Finish a current goal of `q` with that proof. |
+| `have hq : q := hpq hp` | Add `hq : q` to the context; keep the current goal. |
+| `apply hpq` | Change a current goal of `q` into the input goal `p`. |
+
+An arrow groups to the right: `p → q → r` means `p → (q → r)`. A proof accepts a proof of `p`, then
+a proof of `q`, and produces a proof of `r`. We'll use this when statements have several premises.
 
 ### 3.2 Conjunction `∧` — pair and project
 
-- **Build:** `⟨hp, hq⟩` (anonymous constructor), or `constructor` to split the goal `p ∧ q` into `p` and `q`.
+- **Build:** supply the pair `⟨hp, hq⟩` directly, or use `constructor` to begin building it: Lean
+  asks you to provide a proof of `p`, then a proof of `q`.
 - **Use:** `h.1 : p` and `h.2 : q`; or `obtain ⟨hp, hq⟩ := h` to name both halves at once.
 
 ```lean
@@ -87,95 +256,720 @@ example (p q : Prop) (h : p ∧ q) : p := h.1
 example (p q : Prop) (hp : p) (hq : q) : p ∧ q := ⟨hp, hq⟩
 ```
 
-`obtain` (and its cousin `rcases`) destructures — and it handles nesting: from `h : p ∧ (q ∧ r)` you can
-write `obtain ⟨hp, hq, hr⟩ := h` to get all three at once.
+The first example takes evidence out of a conjunction; the second assembles a conjunction. In
+term mode, `⟨hp, hq⟩` directly supplies the pair. In tactic mode, `constructor` selects `And.intro`
+and asks you to fill its two components.
+
+Here is the construction with `constructor`:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  constructor
+  · exact hp
+  · exact hq
+```
+
+We can explicitly name the same construction rule instead:
+
+```lean
+example (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+  apply And.intro
+  · exact hp
+  · exact hq
+```
+
+`And.intro` takes a proof of `p` and a proof of `q` to build a proof of `p ∧ q`. Both versions
+therefore ask for the same two missing inputs:
+
+```text
+After constructor or apply And.intro:
+  First goal:  ⊢ p    — exact hp supplies the first component
+  Second goal: ⊢ q    — exact hq supplies the second component
+```
+
+The finished proof is `⟨hp, hq⟩`. For this goal, `constructor` chooses `And.intro` for us;
+`apply And.intro` explicitly names it.
+
+Why does this create two goals if we're **building** a proof? The goal `⊢ p ∧ q` asks for a pair
+of proofs. `constructor` sets up that pair with its components still missing:
+
+```text
+⟨a proof of p to supply, a proof of q to supply⟩
+```
+
+Lean shows the missing components as two tasks, `⊢ p` and `⊢ q`. Completing them constructs the
+proof of `p ∧ q`. We are dividing the work to be done, not taking apart evidence we already have.
+To **use** an existing proof `h : p ∧ q`, we extract its available components with `h.1` or `h.2`.
+If we prefer to give those components names, **`obtain`** introduces them into the context:
+
+```lean
+example (p q : Prop) (h : p ∧ q) : q := by
+  obtain ⟨hp, hq⟩ := h
+  exact hq
+```
+
+`obtain ⟨hp, hq⟩ := h` takes apart the evidence in `h`, introducing `hp : p` and `hq : q` into
+the context. It doesn't change the goal. The new names let us refer directly to each proof rather
+than writing projections. The brackets specify the pair's structure; the names inside are ours
+to choose. For nested pairs, we can take them apart one layer at a time.
 
 ### 3.3 Disjunction `∨` — choose, or split
 
-Unlike `∧`, a proof of `p ∨ q` carries only *one* side, and you don't get to assume which.
+A proof of `p ∨ q` supplies evidence for one side. It doesn't supply both proofs, and it doesn't
+assert that the other side is false: both propositions may be true. To construct the disjunction,
+evidence for either one is enough.
 
-- **Build:** `Or.inl hp : p ∨ q` (you have the left) or `Or.inr hq : p ∨ q` (the right). In tactic mode,
-  `left` / `right` pick which to prove.
-- **Use:** `cases h with | inl hp => … | inr hq => …` — you must handle **both** possibilities, since a
-  proof could be either.
+#### Build: choose the side whose proof you can supply
 
 ```lean
 example (p q : Prop) (hp : p) : p ∨ q := Or.inl hp
-
-example (p q : Prop) (h : p ∨ q) : q ∨ p := by
-  cases h with
-  | inl hp => right; exact hp   -- got the left; the goal's right side is p
-  | inr hq => left;  exact hq
 ```
 
-(That second example *is* close to a goal — but try yours with `Or.inl`/`Or.inr` instead of `left`/`right`,
-or vice versa, to feel both styles.)
+`Or.inl hp` means "introduce the or using its left side"; the input `hp` must prove that side.
+`Or.inr` does the same for the right side.
+
+To prove **`p ∨ q`**, evidence for either side is enough. The tactics `left` and `right` say
+**which side we choose to prove**. If we have `hp : p`, we can choose the left side:
+
+```lean
+example (p q : Prop) (hp : p) : p ∨ q := by
+  left
+  -- The goal is now: ⊢ p
+  exact hp
+```
+
+`left` says, "I'll establish the or by proving `p`." It selects the construction `Or.inl` and
+asks for its input. `exact hp` then supplies that proof, completing the construction.
+
+If we instead have `hq : q`, we can choose the right side:
+
+```lean
+example (p q : Prop) (hq : q) : p ∨ q := by
+  right
+  -- The goal is now: ⊢ q
+  exact hq
+```
+
+`right` selects `Or.inr` and asks for a proof of `q`, which `exact hq` supplies. The finished
+proofs are respectively `Or.inl hp` and `Or.inr hq`: choosing a side prepares the construction,
+and the following tactic fills in its evidence.
+
+#### Use: handle both possible sources of the evidence
+
+Here we are in **Use** for the disjunction: we already have its proof and want to use its evidence.
+Our goal is `r`, and we have three inputs:
+
+- `h : p ∨ q`: evidence of at least one of the two propositions.
+- `fromP : p → r`: a function that produces a proof of `r` from a proof of `p`.
+- `fromQ : q → r`: a function that produces a proof of `r` from a proof of `q`.
+
+We can produce `r` from either alternative. To use `h`, we handle whichever constructor its proof
+was built with:
+
+```lean
+example (p q r : Prop) (h : p ∨ q)
+    (fromP : p → r) (fromQ : q → r) : r := by
+  cases h with
+  | inl hp =>
+    exact fromP hp
+  | inr hq =>
+    exact fromQ hq
+```
+
+**Use of `p ∨ q`:** `cases h` opens the available evidence by considering its two possible
+constructors. It creates two branches. The original functions remain available in each branch:
+
+```text
+Left branch:             Right branch:
+hp : p                   hq : q
+⊢ r                      ⊢ r
+```
+
+**Use of the implications:** in the left branch, we apply `fromP` to `hp`; in the right branch,
+we apply `fromQ` to `hq`. Each application uses an existing proof-function to produce a proof of `r`.
+`exact` then supplies that result to finish the branch.
+
+We therefore **use** the disjunction and the implications to **construct** the final proof of `r`.
+We aren't introducing a new disjunction here: the goal is `r`, not `p ∨ q`. In the earlier
+**Build** examples, the goal was `p ∨ q`, and `left` or `right` selected how to construct its proof.
+Both branches must be handled because the proof of the theorem must work for either constructor
+of `Or`. The labels `inl` and `inr` identify these constructors; `hp` and `hq` name the proofs they
+carry. Each `=>` opens its own branch, where several tactics can be written on indented lines.
 
 ### 3.4 `False`, `True`, and negation `¬`
 
-`False` is the proposition with **no** proof. You can never build one honestly — but *if* you have one,
-**anything** follows (`False.elim`, or the tactic `exfalso` which turns any goal into `⊢ False`). `True`
-is the opposite: trivially provable (`trivial`), and useless as a hypothesis.
+`True` is always provable. Its constructor is `True.intro`, and the tactic `trivial` can provide
+that proof. The proposition makes no further demand on our evidence:
 
-Negation is defined in terms of these: **`¬p` is just notation for `p → False`.** So negation needs no
-new rules — it's implication into `False`:
+```lean
+example : True := by
+  trivial
+```
 
-- **Build `¬p`:** `intro hp` (assume `p`), then derive `False`.
-- **Use `hnp : ¬p`:** feed it a proof of `p`; `hnp hp : False`.
+`False` has no proof constructor. We can't establish it without incompatible assumptions, but a
+hypothesis can ask us to work under such assumptions. For instance, a proof of `p` together with
+a proof that `p` implies `False` gives a contradiction.
+
+**`¬p` means `p → False`.** To prove that `p` is false, we show that any supposed proof of `p`
+would lead to a contradiction:
+
+- **Build `¬p`:** introduce a supposed proof of `p`, then show how it leads to `False`.
+- **Use a proof of `¬p`:** apply its proof-function to evidence of `p` to obtain a contradiction.
+
+#### Use: apply an existing proof of negation
+
+Suppose we have **`hnp : ¬p`**. This says that `hnp` is a proof that `p` is false. Expanding the
+definition of negation, its type is `p → False`, so it is a function with these input and output
+types:
+
+```text
+Input:  a proof of p
+Output: a proof of False — a contradiction
+```
+
+If we also have `hp : p`, we can supply exactly the input it requires. The expression **`hnp hp`**
+applies the function `hnp` to the proof `hp`; its result has type `False`:
+
+```lean
+example (p : Prop) (hp : p) (hnp : ¬p) : False := by
+  exact hnp hp
+```
+
+The goal state is:
+
+```text
+hp : p            — evidence that p holds
+hnp : p → False   — evidence that p leads to a contradiction
+⊢ False
+```
+
+`exact hnp hp` supplies the contradiction produced by applying that function. It is the conflict
+between the two assumptions that makes this possible: one establishes `p`, and the other rules
+it out. We haven't proved `False` without assumptions.
+
+This is **Use**: the proof of negation is already available, and we apply it. We aren't proving
+a new negation in this example.
+
+#### Build: show that a supposed proof leads to a contradiction
+
+Now our goal is **`⊢ ¬¬p`**: given `hp : p`, prove that a supposed proof of `¬p` would lead to
+a contradiction. We are constructing a proof of the negation of `¬p`.
+
+Before reading the proof, expand its goal:
+
+```text
+¬¬p means ¬p → False
+     means (p → False) → False
+```
+
+For a goal **`A → B`**, `intro name` introduces an input **`name : A`** and leaves **`B`** as
+the new goal. We choose the name; **Lean takes its type from the input required by the goal**.
+Here the input type `A` is `p → False`, and the output `B` is `False`.
 
 ```lean
 example (p : Prop) (hp : p) : ¬¬p := by
-  intro hnp      -- hnp : ¬p, i.e. p → False; goal ⊢ False
+  intro hnp
   exact hnp hp
-
-example (p : Prop) : False → p := by
-  intro h
-  exact h.elim   -- from False, conclude anything
 ```
 
-### 3.5 Iff `↔` — two implications in a bundle
+The goal is `¬¬p`, meaning `(p → False) → False`. We must build a function that turns any supposed
+proof of `¬p` into a contradiction. `intro hnp` introduces that input and leaves:
 
-`p ↔ q` packages `p → q` and `q → p`.
+```text
+hp : p
+hnp : p → False
+⊢ False
+```
 
-- **Build:** `⟨hmp, hmpr⟩` or `constructor` (two goals: `p → q`, then `q → p`).
-- **Use:** `h.mp : p → q` and `h.mpr : q → p`.
+`hnp` is just the name we chose for this input. Its type is `p → False` because that's what the
+goal's outer implication accepts, not because Lean interprets the letters in the name. We could
+write the same proof with another name:
 
 ```lean
-example (p : Prop) : p ↔ p := ⟨fun h => h, fun h => h⟩
+example (p : Prop) (hp : p) : ¬¬p := by
+  intro objection
+  exact objection hp
 ```
+
+After `intro objection`, Lean has `objection : p → False`. You don't write a type annotation on
+the `intro` line: the goal already specifies that type. Once the input is introduced, the editor's
+goal state shows its name and type, so you can inspect what evidence you now have.
+
+We **use** the incoming negation just as above: `hnp hp` produces `False`. This completes the
+function we were asked to **build**, and therefore proves `¬¬p`.
+
+#### Use: draw a conclusion from an assumed contradiction
+
+```lean
+example (p : Prop) : False → p := by
+  intro h
+  exact False.elim h
+```
+
+This example says that an assumed contradiction lets us prove any proposition. `False.elim h`
+expresses this rule. Its intuition is the same as an empty type: there is no possible value of
+`False` to handle. Thus a function accepting a proof of `False` has no realizable input case.
+This doesn't establish the output proposition without the assumption.
+
+You may also encounter `exfalso`: it changes the current goal to `False`, letting you finish by
+deriving a contradiction. It doesn't create that contradiction for you.
+
+For example, suppose we have both `hp : p` and `hnp : ¬p`, but our goal is another proposition `q`:
+
+```lean
+example (p q : Prop) (hp : p) (hnp : ¬p) : q := by
+  exfalso
+  exact hnp hp
+```
+
+Before `exfalso`, the state is:
+
+```text
+hp : p
+hnp : p → False
+⊢ q
+```
+
+After `exfalso`, the hypotheses are unchanged, but the goal becomes:
+
+```text
+hp : p
+hnp : p → False
+⊢ False
+```
+
+We can finish this new goal with `exact hnp hp`, using the incompatible hypotheses to produce
+the contradiction. `exfalso` arranged for a proof of `False` to establish the original goal `q`,
+using the same rule as `False.elim`. Without a way to prove `False`, the proof would remain unfinished.
+
+### 3.5 Equivalence `↔` — prove both directions
+
+**`p ↔ q`** reads "`p` if and only if `q`." It asks for two proof-functions:
+
+| Direction | Input | Output |
+|---|---|---|
+| `p → q` | A proof of `p` | A proof of `q` |
+| `q → p` | A proof of `q` | A proof of `p` |
+
+Both directions are required. For example, "a number is a multiple of four" implies "it is even,"
+but the reverse implication doesn't hold: six is even without being a multiple of four. Those two
+claims therefore aren't equivalent.
+
+#### Build: supply both proof-functions
+
+Suppose we already have `forward : p → q` and `backward : q → p`. We can construct the equivalence
+by giving Lean those two functions:
+
+```lean
+example (p q : Prop) (forward : p → q) (backward : q → p) : p ↔ q := by
+  constructor
+  · exact forward
+  · exact backward
+```
+
+Before `constructor`, the goal is `⊢ p ↔ q`. After it, the two tasks are:
+
+```text
+First goal:  ⊢ p → q     — supplied by forward
+Second goal: ⊢ q → p     — supplied by backward
+```
+
+As with an "and," `constructor` begins building the evidence and asks for its missing components.
+Here the components are functions proving implications. The two `exact` lines supply them. In
+term mode, the same construction is `⟨forward, backward⟩`.
+
+What if we need to build those functions ourselves? The simplest example is `p ↔ p`:
+
+```lean
+example (p : Prop) : p ↔ p := by
+  constructor
+  · intro hp
+    exact hp
+  · intro hp
+    exact hp
+```
+
+Each branch starts with goal `p → p`. `intro hp` gives `hp : p` and leaves goal `p`, which
+`exact hp` finishes. The two occurrences of `hp` belong to separate branches; each names that
+branch's own input. In term mode, we could write `⟨fun hp => hp, fun hp => hp⟩`.
+
+#### Use: select a direction, then supply its input
+
+Now suppose `h : p ↔ q` is already available. It contains both functions:
+
+```text
+h.mp  : p → q
+h.mpr : q → p
+```
+
+The field names `mp` and `mpr` belong to Lean's equivalence type `Iff`; we don't choose them.
+Use the input and output types to pick the direction you need.
+
+```lean
+example (p q : Prop) (h : p ↔ q) (hp : p) : q := by
+  exact h.mp hp
+```
+
+Our goal is `q`, and `hp` proves `p`. Thus we select `h.mp : p → q` and apply it to `hp`;
+`h.mp hp` has type `q`. For a goal of `p` with evidence of `q`, we use the other direction:
+
+```lean
+example (p q : Prop) (h : p ↔ q) (hq : q) : p := by
+  exact h.mpr hq
+```
+
+Both examples are **Use** of an existing equivalence. We aren't constructing a new equivalence
+or assuming that any implication can be reversed.
 
 ### 3.6 Quantifiers `∀` and `∃`
 
-`∀ x, P x` is, again, a **function**: give it any `x` and it returns a proof of `P x`.
+#### First, a predicate: a property depending on a value
 
-- **Build:** `intro x`, then prove `P x`. **Use:** apply to a term — `h a : P a`.
+A **predicate** is a function that takes a value and returns a proposition about it. For example:
 
-`∃ x, P x` is a **pair**: a witness together with a proof about it.
+```lean
+def IsZero (n : Nat) : Prop := n = 0
+```
 
-- **Build:** `⟨a, ha⟩` — supply the witness `a` and a proof `ha : P a`. **Use:** `obtain ⟨x, hx⟩ := h`
-  to get a witness `x` and its property `hx : P x`.
+`IsZero 0` is the claim `0 = 0`, while `IsZero 3` is the claim `3 = 0`. Defining the predicate
+doesn't prove either claim; it specifies what each claim means. A proof of `IsZero 0` can be
+written as:
+
+```lean
+example : IsZero 0 := by
+  rfl
+```
+
+Lean unfolds the definition, sees `0 = 0`, and accepts `rfl`.
+
+In general, we write `P : α → Prop`. The Greek letter `α` names the type of inputs, like a generic
+type parameter in programming. `P` takes an input of that type and returns a proposition:
+
+| Declaration | Meaning | Example |
+|---|---|---|
+| `α : Type` | A type of values | `Nat` |
+| `P : α → Prop` | A predicate on those values | `IsZero : Nat → Prop` |
+| `x : α` | One input value | `0 : Nat` |
+| `hx : P x` | Evidence that the input has the property | A proof of `IsZero 0` |
+
+Keep `P x` and `hx : P x` distinct: the first is a claim; the second supplies its proof.
+
+#### Build a universal statement: handle an arbitrary input
+
+**`∀ x : α, P x`** means "for every value `x` of type `α`, `P x` holds." Its proof must work for
+any input of that type.
+
+The whole expression **`∀ x : α, P x` is a proposition**, so its type is `Prop`. Keep the claim
+and its evidence at separate levels:
+
+```text
+α : Type                 — the type of input values
+P : α → Prop             — a predicate on those values
+(∀ x : α, P x) : Prop    — the universal claim is a proposition
+h : ∀ x : α, P x         — h is a proof of that proposition
+```
+
+It is the **proof `h`** that acts as a function: given `a : α`, it produces `h a : P a`.
+The universal statement describes what that function must prove for each input.
+
+For example:
 
 ```lean
 example : ∀ n : Nat, n = n := by
-  intro n; rfl
-
-example : ∃ n : Nat, n + 1 = 1 := ⟨0, rfl⟩   -- witness 0, proof that 0+1 = 1
+  intro n
+  rfl
 ```
 
-Notice `∀` is the same "build with `intro`, use by applying" as `→` — indeed `p → q` is just `∀ _ : p, q`.
+Before `intro n`, the goal is:
 
-## 4. Constructive vs classical (a one-paragraph teaser)
+```text
+⊢ ∀ n : Nat, n = n
+```
 
-Every rule above lets you *construct* a proof, so everything you prove here is **constructive** — and
-`#print axioms` will report *no axioms*. Some famous classical laws — `¬¬p → p` (double-negation
-elimination) and `p ∨ ¬p` (excluded middle) — *cannot* be proved by these rules alone; they need an
-extra principle. Lean has it (`Classical.em`), but using it shows up as a dependency on
-`Classical.choice`. We'll meet that distinction head-on in **Course 0.4**. For now, everything you prove
-is constructive and axiom-free — keep it that way.
+After `intro n`, it is:
+
+```text
+n : Nat
+⊢ n = n
+```
+
+Where did the type of `n` come from? The binder `∀ n : Nat` says that the input is a natural
+number. `intro n` names that input; it doesn't choose a particular number. We could name it `k`
+instead, and the new state would be `k : Nat` with goal `k = k`.
+
+`rfl` proves the equality for this arbitrary input, so the function we've built covers every
+natural number. Checking just `0 = 0` would prove one instance, not the universal statement.
+
+#### Use a universal proof: choose an input
+
+Given a proof that works for every input, we can specialize it to a particular value:
+
+```lean
+example (h : ∀ n : Nat, n = n) : 7 = 7 := by
+  exact h 7
+```
+
+`h` accepts a natural number and returns a proof that it equals itself. Supplying `7` gives
+`h 7 : 7 = 7`, exactly our goal. This is **Use** of the universal proof.
+
+Here the numerals in `7 = 7` are interpreted as natural numbers by default. You may also see
+`(7 : Nat)`: it explicitly gives the numeral its type. That annotation isn't needed in this example.
+
+The same operation works for any predicate:
+
+```lean
+example (α : Type) (P : α → Prop) (all : ∀ x, P x) (a : α) : P a :=
+  all a
+```
+
+Here `all` is the name of the available proof-function. It accepts any `x : α` and returns evidence
+of `P x`. Applying it to `a : α` therefore produces evidence of `P a`. The type of `x` in
+`∀ x, P x` is inferred from the input type of the predicate `P`.
+
+#### Build an existential statement: choose a witness
+
+**`∃ x : α, P x`** means "at least one value `x` of type `α` has property `P`." A proof must
+supply a **witness** — one such value — and evidence of its property. For example:
+
+```lean
+example : ∃ n : Nat, n + 1 = 1 :=
+  ⟨0, rfl⟩
+```
+
+The pair contains `0 : Nat`, our chosen witness, and a proof of `0 + 1 = 1`. The type required
+for the second component depends on the first: if we chose `3`, we would have to prove `3 + 1 = 1`
+instead, which we can't.
+
+Here is the same construction in tactic mode:
+
+```lean
+example : ∃ n : Nat, n + 1 = 1 := by
+  refine ⟨0, ?_⟩
+  rfl
+```
+
+The tactic **`refine`** starts a proof from an expression with a part still to fill in. Here
+`⟨0, ?_⟩` supplies the witness `0`; **`?_`** marks the missing proof of its property. Lean turns
+that missing part into a goal:
+
+```text
+Before refine:  ⊢ ∃ n : Nat, n + 1 = 1
+After refine:   ⊢ 0 + 1 = 1
+```
+
+`rfl` supplies that remaining proof. One witness suffices for an existential statement; we don't
+need to prove the property for every number.
+
+#### Use an existential proof: open its witness and evidence
+
+Suppose we know that some value has **two properties**, `P` and `Q`, and want to establish that
+some value has property `P`:
+
+```text
+Available: ∃ x : α, P x ∧ Q x
+Goal:      ∃ x : α, P x
+```
+
+We can use the same witness, but must extract the proof of `P` from the evidence of both
+properties. **`obtain`** opens the existential and gives names to its contents:
+
+```lean
+example (α : Type) (P Q : α → Prop)
+    (hex : ∃ x, P x ∧ Q x) : ∃ x, P x := by
+  obtain ⟨x, hx⟩ := hex
+  exact ⟨x, hx.1⟩
+```
+
+Before `obtain`, the relevant state is:
+
+```text
+hex : ∃ x : α, P x ∧ Q x
+⊢ ∃ x : α, P x
+```
+
+After `obtain ⟨x, hx⟩ := hex`, it is:
+
+```text
+x : α
+hx : P x ∧ Q x
+⊢ ∃ x : α, P x
+```
+
+Lean gets `x`'s type from the existential's binder. The input promises both properties for that
+witness, so `hx` has type `P x ∧ Q x`. We choose only the names. The goal stays unchanged when
+we open the hypothesis.
+
+We then **use** the conjunction: `hx.1` is a proof of `P x`. Finally we **build** the requested
+existential by supplying the witness `x` and that proof, as `⟨x, hx.1⟩`. The input established two
+properties of a witness; the output establishes only the first. Directly writing `exact hex`
+wouldn't work, because the input proof and the requested proof have different types.
+
+The three roles are distinct:
+
+| Operation | Input value | What happens to the goal? |
+|---|---|---|
+| Build `∀` with `intro x` | Introduce an arbitrary input of the required type | Prove `P x` for that input. |
+| Build `∃` with `refine ⟨a, ?_⟩` | Choose a witness `a` yourself | Prove `P a` for your chosen witness. |
+| Use `∃` with `obtain ⟨x, hx⟩ := hex` | Open the witness already contained in `hex` | The goal stays the same; `x` and `hx` become available. |
+
+### 3.7 Reference: constructing and using evidence
+
+This table summarizes the operations just explained. Read the middle column when the proposition
+is your goal; read the right column when you already have a proof of it.
+
+| Proposition | **Build it** (introduction) | **Use it** (elimination) |
+|---|---|---|
+| `p → q` | `intro h`, then prove `q` (a function) | apply it: `f hp`, or tactic `apply f` |
+| `p ∧ q` | `⟨_, _⟩` or `constructor` | `h.1`, `h.2`, or `obtain ⟨hp, hq⟩ := h` |
+| `p ∨ q` | `Or.inl _` / `Or.inr _`, or `left` / `right` | `cases h with | inl hp => … | inr hq => …` |
+| `¬ p` (= `p → False`) | `intro hp`, then derive `False` | feed it a proof of `p` to get `False` |
+| `False` | No constructor; establish a contradiction from incompatible hypotheses | `False.elim` uses that contradiction to prove the goal |
+| `True` | `trivial` (or `True.intro`) | — (carries no information) |
+| `p ↔ q` | `⟨_, _⟩` or `constructor` (two directions) | `.mp` (`p→q`), `.mpr` (`q→p`) |
+| `∀ x, P x` | `intro x`, then prove `P x` | apply to a term: `h a : P a` |
+| `∃ x, P x` | `⟨a, ha⟩`, or `refine ⟨a, ?_⟩` then prove `P a` | `obtain ⟨x, hx⟩ := h` |
+
+## 4. Constructive and classical reasoning
+
+Let's compare two ways of establishing the **same statement**, `p ∨ ¬p`: "`p` holds, or `p` is
+false." The difference is what evidence or logical principle we have available.
+
+### 4.1 Constructive: use evidence to build the requested proof
+
+Suppose we already have `hp : p`. We can prove `p ∨ ¬p` by choosing its left side:
+
+```lean
+example (p : Prop) (hp : p) : p ∨ ¬p := by
+  left
+  exact hp
+```
+
+The steps are:
+
+```text
+Available:      hp : p
+Initial goal:  ⊢ p ∨ ¬p
+After left:    ⊢ p
+After exact:   no goals remain
+```
+
+We **build** the disjunction using the proof of `p` we were given. We don't need to establish
+anything about its right side.
+
+If we instead have `hnp : ¬p`, we can build the same disjunction from the right:
+
+```lean
+example (p : Prop) (hnp : ¬p) : p ∨ ¬p := by
+  right
+  exact hnp
+```
+
+After `right`, the goal is `¬p`, exactly the type of our input `hnp`. Both proofs use the
+constructive rules from §3: choose a side and supply its evidence.
+
+### 4.2 What changes when we have no evidence for either side?
+
+Now suppose the **only input** is `p : Prop`. We want:
+
+```text
+p : Prop
+⊢ p ∨ ¬p
+```
+
+`p : Prop` tells us that `p` is a proposition. It doesn't give us `hp : p` or `hnp : ¬p`.
+That is the key difference from the two examples above.
+
+Try the same operations in this state:
+
+- `left` would leave goal `p`, but we have no proof of `p` to supply.
+- `right` would leave goal `¬p`. Let's follow that choice step by step.
+
+**After `right`,** the state is:
+
+```text
+p : Prop
+⊢ ¬p
+```
+
+The goal `¬p` means `p → False`: to establish that `p` is false, we must show that a supposed
+proof of `p` would lead to a contradiction.
+
+**After `intro hp`,** we have introduced the input required by that implication:
+
+```text
+p : Prop
+hp : p
+⊢ False
+```
+
+The type of `hp` comes from the input of `p → False`. Its name is our choice. But why should
+this proof of `p` lead to a contradiction? We have no other hypothesis that rules out `p`.
+The only evidence available is `hp : p`, and a proof of `p` is not, by itself, contradictory.
+For example, if `p` were the claim `2 = 2`, having a proof of it would be entirely consistent.
+
+Thus `intro hp` lets us **start** the proof of a negation; it doesn't guarantee that we can
+finish it. We still need a reason why the assumed proof leads to `False`, and this context
+provides none.
+
+Choosing a side doesn't solve the missing-evidence problem. The constructive introduction rules
+for "or" don't by themselves establish `p ∨ ¬p` for an arbitrary proposition.
+
+This doesn't prevent proving the disjunction for particular claims. For instance, when `p` is
+`2 = 2`, we can prove its left side with `rfl`. The difficult request here is a proof that works
+for **every proposition**, with no evidence supplied about which side holds.
+
+### 4.3 Classical: use a general principle of logic
+
+**Classical logic** adds a principle called **excluded middle**: for every proposition `p`,
+`p ∨ ¬p` holds. This gives the general result that the constructive rules alone didn't provide.
+
+Lean makes this principle available through the theorem `Classical.em`:
+
+```lean
+theorem classical_example (p : Prop) : p ∨ ¬p := by
+  exact Classical.em p
+```
+
+Here the steps are different from the constructive examples:
+
+```text
+Available input:   p : Prop
+Goal:              ⊢ p ∨ ¬p
+Available theorem: Classical.em establishes this for every proposition
+Apply it to p:     Classical.em p : p ∨ ¬p
+```
+
+We **use** `Classical.em` by supplying the proposition `p` as its argument. The result is already
+a proof of the whole goal, so `exact` finishes. We don't need an input `hp : p` or `hnp : ¬p`;
+we rely on the additional classical principle instead.
+
+`Classical.em p` isn't an algorithm that examines `p` and computes which side is true. It supplies
+a proof of the general logical statement. When working under classical logic, we may use that
+statement in further reasoning.
+
+### 4.4 What Lean checks, and what we will use here
+
+Both styles produce proofs checked by Lean's kernel. The distinction is which principles those
+proofs depend on. An **axiom** is an assumption in the logical foundation; a proof can depend on
+such assumptions through the theorems it uses.
+
+To inspect the dependencies of the classical example, write:
+
+```lean
+#print axioms classical_example
+```
+
+The output includes `Classical.choice`, a foundational axiom on which Lean's excluded-middle
+theorem depends. The command reports this dependency; it doesn't add an assumption to the proof.
+
+For this lesson's exercises, the inputs provide enough evidence to construct the requested
+results using §3's rules. Their supplied solutions depend on no axioms. We'll study classical
+reasoning more fully in the later logic lesson; for now, the useful distinction is **building a
+proof from available evidence** versus **using an additional general logical principle**.
 
 ## 5. Prove it
 
-Open `Skeleton.lean`; prove the six theorems (all constructive). Check with:
+Open `Skeleton.lean`; prove the seven theorems (all constructive). Check with:
 
 ```bash
 make lab C=00-foundations/02-propositions
@@ -186,83 +980,390 @@ make lab C=00-foundations/02-propositions
 3. `or_comm' : p ∨ q → q ∨ p`                  — disjunction
 4. `contrapositive : (p → q) → ¬q → ¬p`        — negation
 5. `iff_symm : (p ↔ q) → (q ↔ p)`              — iff
-6. `exists_imp : (∀ x, p x → q x) → (∃ x, p x) → ∃ x, q x`  — quantifiers
+6. `exists_imp` — quantifiers. Prove the following statement:
 
-Each is one application of a move from §3. Try cold first; §6 has graduated hints; `Solution.lean` is
-the last resort.
+   ```lean
+   theorem exists_imp (α : Type) (p q : α → Prop)
+       (h : ∀ x, p x → q x) (hex : ∃ x, p x) :
+       ∃ x, q x := ...
+   ```
+
+7. **Combine two universal properties.** If every value has property `P` and every value has
+   property `Q`, prove that every value has both properties:
+
+   ```lean
+   theorem forall_and (α : Type) (P Q : α → Prop)
+       (hP : ∀ x, P x) (hQ : ∀ x, Q x) :
+       ∀ x, P x ∧ Q x := ...
+   ```
+
+These goals combine the smaller operations from §3. You may need several introductions, a case
+split, or a new arrangement of evidence. Try each one before opening the hints in §6. Full worked
+corrections are in §7 and `Solution.lean`.
 
 ## 6. Hints for the skeleton
 
-**1 `imp_trans`.** *Nudge:* the goal is an implication, so `intro` the new hypothesis first; then you
-have `hp : p` and want `r`. *More:* chain the functions — `hpq hp : q`, then `hqr` on that.
+**1. `imp_trans`.**
 
-**2 `and_reassoc`.** *Nudge:* take the hypothesis apart, then build the new shape. *More:*
-`obtain ⟨hp, hq, hr⟩ := h`, then `exact ⟨⟨hp, hq⟩, hr⟩`.
+- *Nudge:* inspect the output types of the two proof-functions. Which one produces the goal?
+- *More:* introduce the input proof of `p`. You can then produce evidence of the intermediate
+  proposition `q` and use it as an input to the other function.
 
-**3 `or_comm'`.** *Nudge:* you can't project a disjunction — you must `cases` on it. In each branch you
-have one side; put it on the *other* side of the goal. *More:* `Or.inr` in the `inl` branch, `Or.inl` in
-the `inr` branch (or `right`/`left`).
+**2. `and_reassoc`.**
 
-**4 `contrapositive`.** *Nudge:* `¬q` and `¬p` are arrows into `False`; `intro` both, then your goal is
-`False`. *More:* you'll have `hnq : ¬q`, `hp : p`; turn `hp` into a `q` with `h`, then hit `hnq` with it.
+- *Nudge:* draw the input and output as pairs inside pairs. Which proof belongs in each position?
+- *More:* take the input apart one layer at a time. The output's first component is itself a
+  conjunction; its second component is a proof of `r`.
 
-**5 `iff_symm`.** *Nudge:* an iff is a pair of implications — `constructor` asks for both. *More:* the
-two directions are exactly `h.mpr` and `h.mp`.
+**3. `or_comm'`.**
 
-**6 `exists_imp`.** *Nudge:* you can't do anything with `∃` until you open it — `obtain` a witness. *More:*
-`obtain ⟨x, hpx⟩ := hex`, then build a new existential `⟨x, …⟩` whose proof is `h x hpx`.
+- *Nudge:* an "or" doesn't give both proofs, so use a case split.
+- *More:* in each branch, identify which side of the output disjunction matches the evidence
+  available in that branch.
 
-## 7. Exercises (optional, for fluency)
+**4. `contrapositive`.**
 
-1. **Currying.** `curry : (p ∧ q → r) ↔ (p → q → r)`. *Hint:* `constructor`; one direction `intro`s a
-   pair and the other rebuilds it.
-2. **De Morgan (constructive).** `not_or : ¬(p ∨ q) ↔ ¬p ∧ ¬q`. *Hint:* for the forward direction, build
-   the `∧` of two negations, each a `fun … => …` that injects into the `∨`; for the backward direction,
-   `cases` the disjunction.
+- *Nudge:* read each negation as a function into `False`.
+- *More:* after introducing the two incoming proofs, the goal is `False`. What input does the
+  negative hypothesis need, and which function can produce that input?
 
-## 8. Corrections to the optional exercises
+**5. `iff_symm`.**
+
+- *Nudge:* an equivalence requires two implications. Write their input and output types.
+- *More:* the given equivalence already contains a proof-function for each direction. Select
+  the one matching each goal.
+
+**6. `exists_imp`.**
+
+- *Nudge:* open the supplied existential to obtain a witness and evidence of its property.
+- *More:* specialize the universal hypothesis to that witness. Can the same witness satisfy
+  the new existential property?
+
+**7. `forall_and`.**
+
+- *Nudge:* the goal is universal. What kind of input must your proof accept?
+- *More:* after introducing an arbitrary value, inspect the resulting goal. Which evidence can
+  the two universal hypotheses supply for that value?
+
+## 7. Corrections to the required exercises
+
+Read these after trying `Skeleton.lean`. Each proof is checked in `Solution.lean`.
+
+### Exercise 1 — `imp_trans`
+
+#### Approach 1: reason forwards with `have`
+
+Start with the evidence of `p`, produce evidence of `q`, then evidence of `r`:
+
+```lean
+theorem imp_trans (p q r : Prop) (hpq : p → q) (hqr : q → r) : p → r := by
+  intro hp
+  have hq : q := hpq hp
+  have hr : r := hqr hq
+  exact hr
+```
+
+`intro hp` gives `hp : p` and leaves goal `r`. The two `have` lines establish named intermediate
+facts without changing that goal:
+
+```text
+After intro hp:   hp : p                          ⊢ r
+After have hq:    hp : p, hq : q                  ⊢ r
+After have hr:    hp : p, hq : q, hr : r          ⊢ r
+```
+
+The proof-functions `hpq` and `hqr` remain available throughout. `hpq hp` produces `q`, then
+`hqr hq` produces `r`. Finally, `exact hr` supplies the evidence requested by the goal.
+
+You can also finish this proof with `trivial`: here it finds the hypothesis `hr : r` and uses it
+to close the goal. In this situation, `trivial` isn't restricted to proving the proposition `True`;
+it can finish a goal whose proof is already a hypothesis. Writing `exact hr` names explicitly
+which evidence finishes the proof.
+
+#### Approach 2: reason backwards with `apply`
+
+Start with the goal `r` and ask which function can produce it:
+
+```lean
+example (p q r : Prop) (hpq : p → q) (hqr : q → r) : p → r := by
+  intro hp
+  apply hqr
+  apply hpq
+  exact hp
+```
+
+After `intro hp`, the input proof is available and the goal is `r`. Each `apply` replaces that
+goal with the input required by the selected function:
+
+```text
+Goal r  → apply hqr → goal q
+Goal q  → apply hpq → goal p
+Goal p  → exact hp  → finished
+```
+
+`hqr : q → r` can produce `r` if we supply `q`. Then `hpq : p → q` can produce that `q` if
+we supply `p`. Finally, `hp : p` is already available. The functions `hpq` and `hqr` remain
+unchanged throughout; it is the goal that changes.
+
+Both approaches compose the same proof-functions. With `have`, we name intermediate evidence
+while keeping the goal `r`. With `apply`, we replace the goal by smaller requirements until an
+available proof matches it. Either is a valid solution; choose the direction that helps you
+understand the argument.
+
+### Exercise 2 — `and_reassoc`
+
+```lean
+theorem and_reassoc (p q r : Prop) (h : p ∧ (q ∧ r)) : (p ∧ q) ∧ r := by
+  obtain ⟨hp, hqr⟩ := h
+  obtain ⟨hq, hr⟩ := hqr
+  exact ⟨⟨hp, hq⟩, hr⟩
+```
+
+The first `obtain` opens the outer pair, giving `hp : p` and `hqr : q ∧ r`. The second opens that
+inner pair. The goal needs a pair whose first component is a proof of `p ∧ q` and whose second
+component proves `r`. The nested brackets `⟨⟨hp, hq⟩, hr⟩` reproduce precisely that structure.
+
+You can also unpack the input in one line with `obtain ⟨hp, hq, hr⟩ := h`: this pattern follows
+the right-nested conjunction. The two-line version makes each layer visible.
+
+### Exercise 3 — `or_comm'`
+
+```lean
+theorem or_comm' (p q : Prop) (h : p ∨ q) : q ∨ p := by
+  cases h with
+  | inl hp =>
+    exact Or.inr hp
+  | inr hq =>
+    exact Or.inl hq
+```
+
+In the first branch, the input carries `hp : p`. In the output `q ∨ p`, `p` is on the right, so
+we use `Or.inr`. In the second branch, the input carries `hq : q`; `q` is on the left of the
+output, so we use `Or.inl`. The branch label describes the input's constructor; the constructor
+we return depends on the output's order.
+
+### Exercise 4 — `contrapositive`
+
+```lean
+theorem contrapositive (p q : Prop) (h : p → q) : ¬q → ¬p := by
+  intro hnq
+  intro hp
+  exact hnq (h hp)
+```
+
+The first introduction gives `hnq : q → False`. The second gives `hp : p`, since proving `¬p`
+means accepting a proof of `p` and deriving `False`. Applying `h` to `hp` produces `q`, and
+`hnq` turns that into the contradiction we need. `intro hnq hp` combines the two introduction
+steps if you prefer a shorter version.
+
+### Exercise 5 — `iff_symm`
+
+```lean
+theorem iff_symm (p q : Prop) (h : p ↔ q) : q ↔ p := by
+  constructor
+  · exact h.mpr
+  · exact h.mp
+```
+
+The first goal is `q → p`, already provided by `h.mpr`. The second is `p → q`, provided by `h.mp`.
+We return the two existing implications in the order required by the new equivalence.
+
+### Exercise 6 — `exists_imp`
+
+```lean
+theorem exists_imp (α : Type) (p q : α → Prop)
+    (h : ∀ x, p x → q x) (hex : ∃ x, p x) : ∃ x, q x := by
+  obtain ⟨x, hpx⟩ := hex
+  exact ⟨x, h x hpx⟩
+```
+
+Opening `hex` gives a witness `x : α` and `hpx : p x`. Specializing the universal proof gives
+`h x : p x → q x`. Applying that function to `hpx` supplies `q x`. Thus the same witness `x`
+can be returned, paired with evidence of the new property. In `h x hpx`, function application
+groups to the left: it means `(h x) hpx`.
+
+### Exercise 7 — `forall_and`
+
+```lean
+theorem forall_and (α : Type) (P Q : α → Prop)
+    (hP : ∀ x, P x) (hQ : ∀ x, Q x) : ∀ x, P x ∧ Q x := by
+  intro x
+  constructor
+  · exact hP x
+  · exact hQ x
+```
+
+We **build** a universal proof with `intro x`. The type of `x` is `α`, inferred from the
+quantifier's binder; we haven't chosen a particular value. The state is:
+
+```text
+hP : ∀ x : α, P x
+hQ : ∀ x : α, Q x
+x : α
+⊢ P x ∧ Q x
+```
+
+`constructor` begins building the conjunction, leaving goals `P x` and `Q x`. We **use** each
+universal hypothesis by supplying the same input `x`: `hP x` has type `P x`, and `hQ x` has
+type `Q x`. Each `exact` provides one of the required components.
+
+If you prefer to name the intermediate evidence with `have`, the same statement can be proved as:
+
+```lean
+example (α : Type) (P Q : α → Prop)
+    (hP : ∀ x, P x) (hQ : ∀ x, Q x) : ∀ x, P x ∧ Q x := by
+  intro x
+  have hPx : P x := hP x
+  have hQx : Q x := hQ x
+  exact ⟨hPx, hQx⟩
+```
+
+Both versions work for an arbitrary `x`, which establishes the requested universal claim.
+
+## 8. Exercises (optional, for fluency)
+
+Open `optional/Skeleton.lean` for these two further goals. The same command,
+`make lab C=00-foundations/02-propositions`, checks them after the required exercises. Unfinished
+optional proofs show yellow `OPTIONAL — PENDING`; they don't prevent a completed required lab
+from passing. Their answer key is `optional/Solution.lean`, checked by `make test`.
+
+1. **Currying.** Prove `curry : (p ∧ q → r) ↔ (p → q → r)`.
+   The left side describes a function taking one pair of proofs; the right side describes a
+   function taking a proof of `p`, then a proof of `q`. *Currying* is the conversion between these
+   forms. *Hint:* in each direction, consider how to supply the input required by the available
+   function. One input is a pair; the other consists of two successive arguments.
+2. **De Morgan (constructive).** Prove `not_or : ¬(p ∨ q) ↔ ¬p ∧ ¬q`.
+   This is one of the laws named after De Morgan, relating negation to "and" and "or." It says
+   that ruling out both alternatives together is equivalent to ruling out each separately.
+   *Hint:* the forward implication must provide two negative proof-functions; the reverse
+   implication must handle either alternative of a disjunction.
+
+## 9. Corrections to the optional exercises
+
+Try the optional file before reading these worked proofs. A **curried function** accepts its inputs
+one after another rather than bundled in a pair. The first exercise connects those two forms.
 
 ### Exercise 1 — `curry`
 
 ```lean
 theorem curry (p q r : Prop) : (p ∧ q → r) ↔ (p → q → r) := by
   constructor
-  · intro h hp hq; exact h ⟨hp, hq⟩
-  · intro h hpq;   exact h hpq.1 hpq.2
+  · intro h
+    intro hp
+    intro hq
+    exact h ⟨hp, hq⟩
+  · intro h
+    intro hpq
+    exact h hpq.1 hpq.2
 ```
 
-The two directions are mirror images. **Forward** (`p ∧ q → r ⊢ p → q → r`): `intro h hp hq` peels the
-three arrows, giving `h : p ∧ q → r`, `hp : p`, `hq : q`; reassemble the pair and apply: `h ⟨hp, hq⟩`.
-**Backward** (`p → q → r ⊢ p ∧ q → r`): `intro h hpq` gives the two-argument function `h` and a pair
-`hpq : p ∧ q`; feed it the projections: `h hpq.1 hpq.2`. Currying is exactly the type-theory fact that a
-function *of a pair* and a function *of two arguments* carry the same information.
+`constructor` begins building the equivalence. Its first goal is
+`(p ∧ q → r) → (p → q → r)`; its second is `(p → q → r) → (p ∧ q → r)`.
+
+**Forward direction.** Follow each introduction in the first branch:
+
+| Step | New input, whose type comes from the current goal | Remaining goal |
+|---|---|---|
+| `intro h` | `h : (p ∧ q) → r` | `p → q → r` |
+| `intro hp` | `hp : p` | `q → r` |
+| `intro hq` | `hq : q` | `r` |
+
+We now have two separate proofs, but `h` expects one pair. We **build** that input with `⟨hp, hq⟩`,
+then **use** the function `h` by applying it. `h ⟨hp, hq⟩` has type `r`, finishing the branch.
+
+**Reverse direction.** `intro h` gives `h : p → q → r`; `intro hpq` then gives `hpq : p ∧ q`.
+The goal is `r`. Here the inputs are bundled together, but `h` expects them separately. We **use**
+the pair with its projections: `hpq.1 : p` and `hpq.2 : q`. First `h hpq.1` has type `q → r`;
+applying it to `hpq.2` produces `r`. Thus `h hpq.1 hpq.2` means `(h hpq.1) hpq.2`.
+
+The compact introductions `intro h hp hq` and `intro h hpq` perform the same steps in order.
+Writing separate lines lets you inspect the goal after each input is introduced.
 
 ### Exercise 2 — `not_or`
 
 ```lean
 theorem not_or (p q : Prop) : ¬(p ∨ q) ↔ ¬p ∧ ¬q := by
   constructor
+  · intro hnpq
+    constructor
+    · intro hp
+      exact hnpq (Or.inl hp)
+    · intro hq
+      exact hnpq (Or.inr hq)
   · intro h
-    exact ⟨fun hp => h (Or.inl hp), fun hq => h (Or.inr hq)⟩
-  · intro h hpq
+    intro hpq
     cases hpq with
     | inl hp => exact h.1 hp
     | inr hq => exact h.2 hq
 ```
 
-**Forward** (`¬(p ∨ q) ⊢ ¬p ∧ ¬q`): from `h : (p ∨ q) → False` build both negations at once. `¬p` is
-`fun hp => h (Or.inl hp)` — given a `p`, inject it left to make a `p ∨ q`, then `h` gives `False`;
-symmetrically for `¬q`. **Backward** (`¬p ∧ ¬q ⊢ ¬(p ∨ q)`): `intro h hpq` leaves goal `False` with
-`hpq : p ∨ q`; `cases` it, and whichever side you're on contradicts the matching half of `h`. Note this
-direction of De Morgan is fully constructive — no excluded middle needed (unlike `¬(p ∧ q) → ¬p ∨ ¬q`,
-which *does* need it; a good thing to ponder before Course 0.4).
+**Forward direction: build the two negations.** After `intro hnpq`, we have
+`hnpq : (p ∨ q) → False`, and the goal is `¬p ∧ ¬q`. The inner `constructor` asks for the two
+components of this conjunction. Its bullets are indented inside the forward branch because these
+tasks belong to that branch.
 
-## 9. Going further
+In the first inner branch, the goal `¬p` means `p → False`. After `intro hp`, the state contains:
 
-- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, chapters *Propositions and
+```text
+hnpq : (p ∨ q) → False
+hp : p
+⊢ False
+```
+
+We **build** a disjunction with `Or.inl hp : p ∨ q`, then **use** `hnpq` on that proof to produce
+`False`. The negative hypothesis needs a proof of the whole disjunction, not just a proof of `p`.
+The second inner branch has `hq : q` instead and uses `Or.inr hq` as the input to `hnpq`.
+
+**Reverse direction: use the two negations.** After `intro h`, the goal is `¬(p ∨ q)`, meaning
+`(p ∨ q) → False`. `intro hpq` introduces its input, leaving:
+
+```text
+h : ¬p ∧ ¬q
+hpq : p ∨ q
+⊢ False
+```
+
+We **use** `hpq` with `cases`. In the `inl` branch, `hp : p` is available and `h.1 : p → False`
+accepts it. In the `inr` branch, `hq : q` is available and `h.2 : q → False` accepts it. Each
+branch therefore supplies the contradiction required by the negative goal.
+
+This proof uses the given evidence in both directions; it doesn't require excluded middle.
+
+## 10. Conclusion
+
+This lesson connects the wording of a claim to the evidence needed to prove it. An "and" asks
+for both proofs; an "or" asks for evidence of one alternative; an implication asks for a function
+from premise to conclusion. A universal claim must handle an arbitrary input, while an existential
+claim requires a suitable witness and a proof of its property.
+
+Those same constructions also tell us how to use hypotheses. A conjunction provides component
+proofs, an implication can be applied to its input, and an existential can be opened to reveal
+its witness and evidence. Before choosing a tactic, read the goal and the available hypotheses:
+what must you construct, and what can the existing evidence supply?
+
+You can organize that reasoning in more than one way. With `have`, you establish intermediate
+facts and give their proofs names. With `apply`, you work backwards from the goal to the input
+needed by a proof-function. `exact` supplies a proof whose type matches the current goal. The
+two approaches to `imp_trans` show why different sequences of tactics can establish the same claim.
+The names you choose help you follow the argument; their types tell you what each expression proves.
+
+The exercises use constructive rules to assemble the requested evidence. We also saw how classical
+excluded middle adds a general principle for arbitrary propositions, and how to inspect a proof's
+dependencies. You'll return to that distinction later; the immediate skill is to follow the
+evidence through each step and check the goal that remains.
+
+Together with induction from the previous lesson, these rules give you the basic tools for the
+next stage: defining more structured data, writing recursive functions, and proving their
+properties. Later, we'll make the logical rules explicit as data and use them to build a verified
+theorem prover.
+
+## 11. Going further
+
+- **Theorem Proving in Lean 4** — the local copy at `../../../references/theorem_proving_in_lean4`, if
+  available: chapters *Propositions and
   Proofs* and *Quantifiers and Equality*: the complete account of every connective and tactic here.
-- **Logic and Proof** — `../../references/logic_and_proof`: the same logic from the *natural deduction*
+- **Logic and Proof** — the local copy at `../../../references/logic_and_proof`, if available: the same logic from the *natural deduction*
   side (inference rules, on paper), which is exactly what Course 1 formalizes.
 - **Next:** Course 0.3 (inductive types & recursion in depth) and 0.4 (natural deduction on paper ↔ Lean,
   and the constructive-vs-classical line) — then Course 1, where we build and verify a prover for the
-  very rules in §2's table.
+  very rules summarized in §3.7.

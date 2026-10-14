@@ -8,7 +8,9 @@ namespace Course02
 -- → : a proof of an implication is a function; `intro` assumes, application uses.
 theorem imp_trans (p q r : Prop) (hpq : p → q) (hqr : q → r) : p → r := by
   intro hp
-  exact hqr (hpq hp)
+  have hq : q := hpq hp
+  have hr : r := hqr hq
+  exact hr
 
 -- ∧ : `obtain ⟨…⟩` destructures; `⟨…⟩` builds.
 theorem and_reassoc (p q r : Prop) (h : p ∧ (q ∧ r)) : (p ∧ q) ∧ r := by
@@ -38,6 +40,13 @@ theorem exists_imp (α : Type) (p q : α → Prop)
   obtain ⟨x, hpx⟩ := hex
   exact ⟨x, h x hpx⟩
 
+theorem forall_and (α : Type) (P Q : α → Prop)
+    (hP : ∀ x, P x) (hQ : ∀ x, Q x) : ∀ x, P x ∧ Q x := by
+  intro x
+  constructor
+  · exact hP x
+  · exact hQ x
+
 /-! ## Checks (Tier-2 computational + honesty audit)
 
 For arbitrary `p q : Prop` we had to *prove* the theorems above. But statements over a *finite,
@@ -50,5 +59,6 @@ example : ∀ a b : Bool, (a && b) = (b && a) := by decide   -- the machine chec
 #print axioms imp_trans
 #print axioms or_comm'
 #print axioms exists_imp
+#print axioms forall_and
 
 end Course02

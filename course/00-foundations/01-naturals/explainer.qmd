@@ -544,7 +544,29 @@ All four rules have been proved and registered. Simplification combines them und
 successors; it doesn't require a fresh induction argument. To make the rule set explicit, you can
 also write `simp only [add_zero, zero_add, add_succ, succ_add]`.
 
-## 10. Going further
+## 10. Conclusion
+
+We started with two ways to build a natural number: `zero` and `succ`. From that structure, we
+defined addition by recursion and proved its laws. Commutativity and associativity weren't part
+of the definition; they became results we could justify and then reuse.
+
+The important distinction is between **computation** and **reasoning about an arbitrary input**.
+When an expression reduces directly to the requested result, `rfl` can finish the equality. When
+computation is stuck on an unknown number, induction gives us the zero and successor cases. In
+the successor case, the induction hypothesis connects the smaller expression to the result we
+need. `rw` lets us make that connection explicitly, while `simp` automates applications of rules
+we have already proved.
+
+You now have a method for approaching a new arithmetic law: read the definition, identify the
+argument it examines, inspect the goal in each case, and use earlier results where they fit.
+The worked proofs and exercises show how a small collection of definitions can support a growing
+collection of theorems.
+
+The next lesson turns from arithmetic laws to the logical structure of claims themselves. We will
+ask what evidence is required for "if," "and," "or," "for all," and "there exists." The idea you
+have already used remains central: a proof must supply exactly the evidence requested by its type.
+
+## 11. Going further
 
 - **Natural Number Game** — the local reference copy at `../../../references/NNG4`, if available, or play at
   [adam.math.hhu.de](https://adam.math.hhu.de). You've just rebuilt its *Addition World*; its
