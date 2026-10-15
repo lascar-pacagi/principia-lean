@@ -85,7 +85,13 @@ def reset_source(source, exercise_names):
         end = boundary.start() if boundary else len(clean)
         depth = 0
         assignment = None
+        equation = None
         for i in range(declaration.end(), end):
+            if depth == 0 and clean[i] == "|":
+                line_start = clean.rfind("\n", 0, i) + 1
+                if not clean[line_start:i].strip():
+                    equation = i
+                    break
             if clean[i] in "([{⟨":
                 depth += 1
             elif clean[i] in ")]}⟩":
@@ -93,12 +99,20 @@ def reset_source(source, exercise_names):
             elif depth == 0 and clean.startswith(":=", i):
                 assignment = i + 2
                 break
-        if assignment is None:
+        if assignment is not None:
+            body_start = assignment
+            replacement = f" by\n{indent}  sorry"
+        elif equation is not None:
+            # Equation-style definitions have branches rather than a := body.
+            # Replace the branches while retaining the complete type signature.
+            body_start = declaration.end() + len(clean[declaration.end():equation].rstrip())
+            replacement = f" := by\n{indent}  sorry"
+        else:
             raise ValueError(f"No := body found for exercise: {name}")
-        body_end = assignment + len(clean[assignment:end].rstrip())
-        if body_end == assignment:
+        body_end = body_start + len(clean[body_start:end].rstrip())
+        if body_end == body_start:
             raise ValueError(f"Empty proof body for exercise: {name}")
-        edits.append((assignment, body_end, f" by\n{indent}  sorry"))
+        edits.append((body_start, body_end, replacement))
     missing = set(exercise_names) - found
     if missing:
         raise ValueError("Missing exercises: " + ", ".join(sorted(missing)))

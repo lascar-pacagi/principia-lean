@@ -6,6 +6,7 @@
   "00-foundations/02-propositions/Skeleton.lean": ["imp_trans", "and_reassoc", "or_comm'", "contrapositive", "iff_symm", "exists_imp", "forall_and"],
   "00-foundations/02-propositions/optional/Skeleton.lean": ["curry", "not_or"],
   "00-foundations/03-recursion/Skeleton.lean": ["swap_swap", "eval_swap", "size_swap"],
+  "00-foundations/03-recursion/optional/Skeleton.lean": ["eval_swap_swap", "numLeaves", "leaves_swap"],
   "00-foundations/04-logic/Skeleton.lean": ["dne", "em", "peirce", "not_and"],
   "01-natural-deduction/01-syntax/Skeleton.lean": ["size_pos", "size_neg"],
   "01-natural-deduction/02-semantics/Skeleton.lean": ["eval_neg", "taut_imp_self", "taut_em"],

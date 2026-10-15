@@ -34,19 +34,34 @@ def size : Expr → Nat
   | const _  => 1
   | plus a b => 1 + size a + size b
 
-/-! Your three theorems. Each is an induction on `e`. -/
+/-! Your three theorems. -/
 
--- swapping twice gets you back where you started
 theorem swap_swap (e : Expr) : swap (swap e) = e := by
-  sorry
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap]
+    rw [iha]
+    rw [ihb]
 
--- swapping operands doesn't change the value (because `+` is commutative)
 theorem eval_swap (e : Expr) : eval (swap e) = eval e := by
-  sorry
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap]
+    simp only [eval]
+    rw [iha]
+    rw [ihb]
+    apply Nat.add_comm
 
--- swapping doesn't change the size
 theorem size_swap (e : Expr) : size (swap e) = size e := by
-  sorry
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap, size]
+    rw [iha, ihb]
+    rw [Nat.add_assoc, Nat.add_comm b.size a.size]
+    rw [Nat.add_assoc]
 
 end Expr
 end Course03

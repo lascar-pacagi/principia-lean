@@ -50,6 +50,34 @@ def other (n : Nat) := exercise n
             'theorem goal (n : Nat := 0) : n = n := by\n  sorry\n',
         )
 
+    def test_resets_recursive_equations_before_assignments_in_branches(self):
+        source = '''def helper : Nat := 7
+def exercise : Nat → Nat
+  | 0 => 0
+  | n + 1 =>
+    let previous := exercise n
+    previous + 1
+def after : Nat := helper
+'''
+        expected = '''def helper : Nat := 7
+def exercise : Nat → Nat := by
+  sorry
+def after : Nat := helper
+'''
+        reset = reset_source(source, ["exercise"])
+        self.assertEqual(reset, expected)
+        self.assertEqual(reset_source(reset, ["exercise"]), reset)
+
+    def test_preserves_pattern_matching_inside_a_default_parameter(self):
+        source = '''def exercise (f : Nat → Nat := fun
+    | 0 => 0
+    | n + 1 => n) : Nat := f 3
+'''
+        self.assertEqual(
+            reset_source(source, ["exercise"]),
+            source.replace(' : Nat := f 3', ' : Nat := by\n  sorry'),
+        )
+
     def test_string_body_and_idempotence(self):
         source = 'def exercise : String := "hello"\n'
         reset = reset_source(source, ["exercise"])

@@ -1,228 +1,681 @@
 ---
-title: "03 — Inductive types and recursion: building (and reasoning about) your own data"
+title: "03 — Inductive types and recursion: building and reasoning about expression trees"
 ---
 
-> **Where you are.** In `01-naturals` you built `MyNat` from two constructors and proved its laws; in
-> `02-propositions` you learned the connectives. Now we make the *type-building* and *recursion*
-> machinery itself the subject — because Course 1's prover is, at heart, a **recursive function over a
-> tree of formulas**, proved correct by **structural induction**. We'll build a tiny expression
-> language, evaluate it, transform it, and prove the transformation **preserves meaning** — a
-> miniature of the soundness theorem to come.
+> **Where you are.** You built natural numbers from constructors and proved addition laws by
+> induction. You then learned to construct and use logical evidence. Now we work with data that
+> branches: expression trees. We'll define functions that traverse them and learn why an induction
+> case can have two hypotheses. This is preparation for the formula trees of our future prover.
 
 ## 1. The question
 
-A natural number is simple — a single chain `succ (succ … zero)`. But the data we actually compute with
-*branches*: an arithmetic expression like `2 + (3 + 4)` is a little **tree**. How do we (a) describe
-such trees as a type, (b) write functions that walk them, and (c) prove statements about *all* such
-trees? The answers — `inductive`, structural recursion, and structural induction — are the same trio
-from `MyNat`, now in full generality.
+Consider the arithmetic expression `2 + (3 + 4)`. To evaluate it, we first evaluate the two smaller
+expressions `2` and `3 + 4`, then add their results. Inside `3 + 4`, the same process happens again.
 
-## 2. The idea: `inductive` builds types; recursion and induction come free
+The parentheses describe a tree:
 
-`inductive` lets you mint a new type by listing its **constructors** — the exhaustive ways to build a
-value. That one declaration is remarkably powerful; it covers:
+```text
+        plus
+       /    \
+    const 2  plus
+             /  \
+        const 3  const 4
+```
 
-- **Enumerations** — finitely many constant constructors:
-  ```lean
-  inductive Direction where | north | south | east | west
-  ```
-- **Parameterized containers** — constructors that carry data, possibly of a type parameter:
-  ```lean
-  inductive Option (α : Type) where | none | some (a : α)
-  ```
-- **Recursive types** — constructors that take *the type being defined* as an argument. `MyNat` was
-  one (`succ : MyNat → MyNat`). When a constructor takes **two or more** recursive arguments, the values
-  branch into **trees** — which is exactly what we want now.
+How can we represent this tree, write a function that visits every node, and prove that the function
+works for every possible tree? With `MyNat`, the successor case contained one smaller number.
+Here a sum contains two smaller expressions. We need to account for both branches, in programs
+and in proofs.
 
-And, as with `MyNat`, declaring the type automatically gives you two matched powers:
+We'll also define a transformation that swaps the two children of every sum. It changes the tree's
+shape and the order of its leaves. Does it preserve the computed result? Does it preserve the
+number of nodes?
 
-- **Recursion** to *define* functions: say what the function does on each constructor (you may reuse its
-  value on the constructor's recursive arguments).
-- **Induction** to *prove* statements: prove it for each constructor (you may assume it for the
-  recursive arguments — those assumptions are the **induction hypotheses**).
+Saying that a function takes an expression and returns an expression tells us what kind of
+result it produces. It doesn't tell us how that result relates to the input: a function that
+always returns the expression `0` would also fit that description. For our swapping function,
+we'll therefore prove that the output computes the same number as the input and contains the
+same number of nodes.
 
-A branching constructor like `plus a b` gives a recursive definition *two* sub-results to combine, and
-an induction proof *two* hypotheses to use. That doubling is the only genuinely new thing in this lesson.
+## 2. From constructor arguments to the shape of data
+
+An inductive type lists its **constructors**, the ways to build its values. Each constructor's
+arguments say what information that shape contains.
+
+For an enumeration, the constructors can have no arguments:
+
+```lean
+inductive Direction where
+  | north
+  | south
+  | east
+  | west
+
+def facing : Direction := Direction.north
+```
+
+`Direction.north` is already a complete value. A constructor can also carry a value of another type:
+
+```lean
+inductive Maybe (α : Type) where
+  | none
+  | some (value : α)
+
+def knownCount : Maybe Nat := Maybe.some 7
+def missingCount : Maybe Nat := Maybe.none
+```
+
+`Maybe Nat` describes either an absent number or a supplied natural number. The type parameter
+`α` tells us what kind of payload `some` carries. The constructor `Maybe.some` needs that payload;
+`Maybe.none` does not. This small example defines our own container; Lean already has a similar
+standard type named `Option`.
+
+A **recursive type** goes one step further: a constructor can contain values of the very type being
+defined. `MyNat.succ` contains one `MyNat`. Our expression type will have a constructor containing
+two expressions, which produces branching trees.
+
+This structure guides two different jobs. A recursive function computes a result from each child,
+then combines the results. An induction proof receives evidence that the property holds for each
+child, then proves it for the parent. We'll follow both jobs explicitly below.
 
 ## 3. In Lean
 
-### 3.1 Declaring the expression type
+### 3.1 Declaring expression trees
 
 ```lean
 inductive Expr where
-  | const : Nat → Expr           -- a literal number
-  | plus  : Expr → Expr → Expr   -- the sum of two sub-expressions (branches!)
+  | const : Nat → Expr
+  | plus : Expr → Expr → Expr
 deriving Repr, DecidableEq
 ```
 
-`const` carries a `Nat`; `plus` carries *two* `Expr`s — so an `Expr` is a binary tree with numbers at
-the leaves. `2 + (3 + 4)` is `plus (const 2) (plus (const 3) (const 4))`. (`deriving Repr, DecidableEq`
-just auto-generates a printer and an equality test so we can `#eval` and `#guard` concrete expressions.)
+The constructor types tell us how to build the two shapes:
 
-### 3.2 Functions by structural recursion
+| Constructor | Required inputs | Result |
+|---|---|---|
+| `Expr.const` | A natural number `n` | A leaf representing that number |
+| `Expr.plus` | Two expressions `a` and `b` | A node representing their sum |
 
-To define a function on `Expr`, give a case per constructor — and on `plus` you may call the function on
-the sub-expressions, because they are *structurally smaller*, which guarantees termination:
+For example:
+
+```lean
+def sample : Expr :=
+  Expr.plus (Expr.const 2) (Expr.plus (Expr.const 3) (Expr.const 4))
+```
+
+`Expr.const 2` is an expression containing the number two; its type is `Expr`, not `Nat`.
+`Expr.plus` builds a node from two expressions. It doesn't perform numerical addition. In contrast,
+the `+` in an arithmetic computation on natural numbers produces a `Nat`.
+
+`deriving Repr, DecidableEq` generates a way to display our trees and a procedure to compare them
+for equality. These help us run examples; they don't prove the transformation's general properties.
+
+The constructor names belong to the namespace `Expr`. To use their short names in the following
+examples, we can open that namespace:
+
+```lean
+open Expr
+
+def smallSum : Expr := plus (const 2) (const 3)
+```
+
+`open Expr` lets `const` and `plus` refer to `Expr.const` and `Expr.plus` in this context.
+
+### 3.2 Evaluating a tree by structural recursion
+
+Our evaluator takes an expression and returns its numerical value:
 
 ```lean
 def eval : Expr → Nat
-  | const n  => n
-  | plus a b => eval a + eval b      -- recurse on both children, then add
+  | const n => n
+  | plus a b => eval a + eval b
+```
 
+Each line handles one constructor. In the first branch, `n : Nat` is the payload of the leaf, and
+we return it. In the second, `a : Expr` and `b : Expr` are the two children. We evaluate each child,
+then add the resulting natural numbers.
+
+Follow the computation on our sample:
+
+```text
+eval (plus (const 2) (plus (const 3) (const 4)))
+= eval (const 2) + eval (plus (const 3) (const 4))
+= 2 + (eval (const 3) + eval (const 4))
+= 2 + (3 + 4)
+= 9
+```
+
+This is **structural recursion**: the calls `eval a` and `eval b` operate on children of the input
+node. Each child is a smaller piece of the finite tree. Eventually a branch reaches a `const`,
+where no recursive call is needed. Lean checks this decrease when accepting the definition.
+
+The number carried by `const n` is not another expression child. The evaluator returns it directly;
+it doesn't recurse through that number's own `Nat` structure.
+
+### 3.3 Transforming and measuring trees
+
+A recursive function can return another tree rather than a number:
+
+```lean
 def swap : Expr → Expr
-  | const n  => const n
-  | plus a b => plus (swap b) (swap a)   -- mirror: recurse, and flip the operands
+  | const n => const n
+  | plus a b => plus (swap b) (swap a)
+```
 
+A leaf stays a leaf with the same number. At each sum, we recursively transform both children and
+put their results in the opposite order. This happens at **every** sum, including nested ones.
+For our sample, the result is:
+
+```text
+Before: plus (const 2) (plus (const 3) (const 4))
+After:  plus (plus (const 4) (const 3)) (const 2)
+```
+
+A third function measures the number of expression nodes:
+
+```lean
 def size : Expr → Nat
-  | const _  => 1
-  | plus a b => 1 + size a + size b      -- count all constructors
+  | const _ => 1
+  | plus a b => 1 + size a + size b
 ```
 
-Lean accepts these because each recursive call is on a *sub-term* (`a` or `b`) of the input — the input
-strictly shrinks, so the recursion can't run forever. (Functions that *don't* shrink structurally need
-*well-founded recursion* with an explicit measure; we won't need that here. `_` in `size`'s first line
-is a wildcard — "some `Nat`, don't care which.")
+The pattern `_` accepts the leaf's payload without naming it: its numerical value doesn't affect
+the node count. A leaf contributes one node. A sum contributes one node for itself plus the nodes
+in both children. Thus `plus (const 2) (const 3)` has size three, and our sample has size five.
+We count `Expr` constructors, not the constructors inside each leaf's `Nat` payload.
 
-### 3.3 The defining equations compute
+These functions have different outputs but the same traversal structure:
 
-Just like `MyNat`'s `add`, each line of a definition is a computation rule. `eval (plus a b)` *is*
-`eval a + eval b`, etc. — so concrete evaluations reduce by `rfl`, and in proofs we unfold a definition
-with `simp only [eval]` (which uses the function's auto-generated equation lemmas).
+| Function | Output type | Work at a sum node |
+|---|---|---|
+| `eval` | `Nat` | Add the children's evaluated values. |
+| `swap` | `Expr` | Rebuild a sum with the transformed children reversed. |
+| `size` | `Nat` | Add both node counts and one for the parent. |
+
+### 3.4 Computing examples and unfolding definitions
+
+For a concrete expression, Lean can compute all the recursive calls:
 
 ```lean
-example : eval (plus (const 2) (const 3)) = 5 := rfl   -- the kernel just computes
+example : eval (plus (const 2) (const 3)) = 5 := by
+  rfl
+
+-- Evaluate the tree representing 2 + (3 + 4): the result is 9.
+#eval eval (plus (const 2) (plus (const 3) (const 4)))
+
+-- Swap the children of the tree representing 2 + 3.
+#eval swap (plus (const 2) (const 3))
+
+-- Three leaves and two sum nodes make five nodes.
+#guard size (plus (const 2) (plus (const 3) (const 4))) = 5
+
+-- Swapping this tree produces the tree representing 3 + 2.
+#guard swap (plus (const 2) (const 3)) = plus (const 3) (const 2)
 ```
 
-### 3.4 Structural induction with two hypotheses — walk through `swap_swap`
+The first proof works because its left side computes to five. The first `#eval` displays nine;
+the second displays the transformed expression using the generated printer. `#guard`
+checks that its condition holds: the first check confirms the size is five, and the second
+compares two trees using the generated equality procedure. These checks cover particular inputs,
+not all expression trees.
 
-Claim: swapping twice is the identity, `swap (swap e) = e`. Induct on `e`:
+Definitions also tell us how to compute at a known outer constructor with unknown children:
 
 ```lean
-theorem swap_swap (e : Expr) : swap (swap e) = e := by
+example (a b : Expr) : eval (plus a b) = eval a + eval b := by
+  rfl
+```
+
+The outer constructor is visibly `plus`, so the evaluator selects its sum branch. It doesn't
+need to know the shapes of `a` and `b` to establish this defining equation.
+
+In a longer proof, **`simp only [eval]`** can unfold those same defining equations:
+
+```lean
+example (a : Expr) : eval (plus (const 0) a) = eval a := by
+  simp only [eval]
+  exact Nat.zero_add (eval a)
+```
+
+After `simp only [eval]`, the evaluator has handled the known `plus` and `const` constructors.
+Since `a` is unknown, `eval a` remains, and the proof state is:
+
+```text
+a : Expr
+⊢ 0 + eval a = eval a
+```
+
+Lean already provides the theorem `Nat.zero_add`, whose statement is:
+
+```text
+Nat.zero_add (n : Nat) : 0 + n = n
+```
+
+It says that adding zero on the left of any natural number `n` gives `n`. To use it here,
+we supply `eval a` as its argument. This is allowed because `eval a` has type `Nat`:
+
+```text
+Nat.zero_add (eval a) : 0 + eval a = eval a
+```
+
+The expression on the left of `:` is a **proof** of the proposition on the right. The parentheses
+group `eval a` as the argument supplied to `Nat.zero_add`. We don't need to know its numerical
+value: the theorem works for every natural number.
+
+Finally, `exact Nat.zero_add (eval a)` supplies that proof to finish the current goal. We could
+also name the proof before using it:
+
+```lean
+example (a : Expr) : eval (plus (const 0) a) = eval a := by
+  simp only [eval]
+  have h : 0 + eval a = eval a := Nat.zero_add (eval a)
+  exact h
+```
+
+We used the definition for the tree computation and an existing theorem for the arithmetic.
+
+Here a function name in `simp only [...]` asks Lean to use its defining equations; an equality
+hypothesis or theorem name supplies a rewrite rule. We'll combine these two uses in induction.
+
+### 3.5 A guided induction: reconstructing a tree
+
+To see the proof method, define a function that rebuilds each node in its original order:
+
+```lean
+def copy : Expr → Expr
+  | const n => const n
+  | plus a b => plus (copy a) (copy b)
+```
+
+It looks as though `copy` should return the original expression. We want to justify that for
+**every** tree, including trees whose shapes we don't know in advance:
+
+```lean
+theorem copy_eq (e : Expr) : copy e = e := by
   induction e with
-  | const n          => rfl
-  | plus a b iha ihb => simp only [swap, iha, ihb]
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [copy]
+    rw [iha, ihb]
 ```
 
-- **`const n` case** — `swap (swap (const n))` computes to `const n`: `rfl`.
-- **`plus a b iha ihb` case** — here's the new part. Because `plus` has two recursive children, the
-  induction tactic hands you **two** hypotheses:
-  - `iha : swap (swap a) = a`
-  - `ihb : swap (swap b) = b`
+The goal before induction is `⊢ copy e = e`. Computation is stuck because `e` is unknown.
+`induction e with` creates one branch per constructor.
 
-  The goal is `swap (swap (plus a b)) = plus a b`. Now `simp only [swap, iha, ihb]` does the work in one
-  step: it **unfolds `swap`** (twice — once for the inner `swap (plus a b) = plus (swap b) (swap a)`, once
-  for the outer), turning the left side into `plus (swap (swap a)) (swap (swap b))`, and then **rewrites
-  with the two induction hypotheses** `iha`, `ihb` to collapse it to `plus a b`. Goal closed.
+**Leaf branch: `| const n =>`.** Here the goal is `copy (const n) = const n`. The definition
+returns `const n` immediately, so `rfl` finishes. `n` has type `Nat` because it is the payload
+of `const`. There is no expression child in this constructor, so there is no induction hypothesis.
 
-`simp only [f, …]` is the everyday idiom for these proofs: *give it the function definitions to unfold
-and the hypotheses to apply, and let it grind.* (It's `rw` on autopilot, repeated until nothing changes.)
+**Sum branch: `| plus a b iha ihb =>`.** The inputs of `plus` are two expression children. Lean
+provides one induction hypothesis for each:
 
-### 3.5 When arithmetic is left over: `omega`
+```text
+a b : Expr
+iha : copy a = a
+ihb : copy b = b
+⊢ copy (plus a b) = plus a b
+```
 
-Sometimes unfolding leaves a purely numeric goal. In `size_swap`, after `simp only [swap, size, iha,
-ihb]` the goal becomes `1 + size b + size a = 1 + size a + size b` — true, but only by commutativity of
-`+`. Rather than fiddle with `rw [Nat.add_comm]`, reach for **`omega`**, Lean's decision procedure for
-linear arithmetic over integers and naturals. It treats `size a`, `size b` as unknowns and closes the
-goal instantly:
+`a` and `b` name the children; `iha` and `ihb` name the proofs for those children. We choose these
+names, but their types come from the constructor and the property we asked induction to prove.
+For this theorem the property is "copying this expression returns this expression."
+
+Now follow the two tactic lines:
+
+```text
+After simp only [copy]:  ⊢ plus (copy a) (copy b) = plus a b
+After rw [iha]:          ⊢ plus a (copy b) = plus a b
+After rw [ihb]:          ⊢ plus a b = plus a b
+```
+
+The last rewrite closes the equality. Each hypothesis handles its own child; we don't assume the
+claim for the whole parent node. This is **structural induction** over a branching type.
+
+You can separate `rw [iha, ihb]` into `rw [iha]` and `rw [ihb]` on two indented lines after the
+same `=>` to inspect the intermediate state in the editor. Unfolding exposes the smaller
+expressions; the hypotheses let us replace them with their established results.
+
+### 3.6 Finishing a numerical goal with `omega`
+
+Sometimes a tree proof leaves an equality about natural numbers after the tree operations have
+been unfolded. For example, an arithmetic goal can have this form:
 
 ```lean
-theorem size_swap (e : Expr) : size (swap e) = size e := by
-  induction e with
-  | const n          => rfl
-  | plus a b iha ihb => simp only [swap, size, iha, ihb]; omega
+example (a b : Nat) : 1 + a + b = 1 + b + a := by
+  omega
 ```
 
-(`a; b` runs tactic `b` after `a`.) `omega` is your friend whenever a goal is "obvious arithmetic."
+`a` and `b` are unknown numbers, so this proof isn't checking a single numerical example.
+**`omega`** is a decision procedure for linear arithmetic on natural numbers and integers: it
+can reason about sums, comparisons, and multiplication by fixed numerical constants. It produces
+a proof that Lean checks. It doesn't handle arbitrary multiplication of two unknown variables.
 
-> **A note on axioms.** `simp` and `omega` are powerful because they're built on Lean's accepted axioms,
-> so `#print axioms swap_swap` will now list `propext` (and `Quot.sound`) rather than "no axioms." That
-> is completely fine — those are three axioms the whole community trusts. The honesty audit forbids only
-> `sorryAx`, the fingerprint of a `sorry`. Power tactics are not cheating; skipped proofs are.
+Here it establishes that changing the order of the two unknown addends doesn't change the sum.
+It can also use arithmetic hypotheses:
 
-## 4. Why this is a dress rehearsal for Course 1
+```lean
+example (a b : Nat) (h : a + 2 = b) : a < b := by
+  omega
+```
 
-Look again at `eval_swap : eval (swap e) = eval e`. It says: *a syntactic transformation of an
-expression does not change what the expression means.* That is **exactly** the shape of a **soundness**
-theorem — "this operation on syntax respects the semantics" — and proving it is exactly the method
-you'll use on a real proof system: define syntax as an inductive type, define meaning by recursion, and
-connect them by structural induction. Course 1 replaces `Expr` with *logical formulas*, `eval` with
-*truth under a valuation*, and `swap` with *the rules of natural deduction* — but the moves are the ones
-you're learning right here.
+The hypothesis says that `b` is two greater than `a`, which establishes the inequality. In a tree
+proof, quantities such as `size a` are natural numbers too. Once the structural reasoning has
+reduced a goal to arithmetic on those quantities, `omega` can finish that remaining arithmetic.
+It doesn't perform the induction over expression trees for us.
+
+## 4. What does it mean for a transformation to be correct?
+
+Our evaluator gives each tree a numerical meaning. Two different trees can represent the same
+result: `plus (const 2) (const 3)` and `plus (const 3) (const 2)` are different syntax trees, but
+both evaluate to five. Equality of syntax and equality of evaluated results are different claims.
+
+This is why a transformation needs a specification. We can ask whether applying it twice restores
+the original syntax, whether it preserves the evaluated result, or whether it preserves the number
+of nodes. Each property requires its own proof. A return type `Expr → Expr` alone guarantees none
+of these properties.
+
+The exercises apply structural induction to such questions. Later, our theorem prover will use
+a tree type for logical formulas, a definition of their meaning, and proofs connecting operations
+on syntax with that meaning. This lesson develops the tools for that work: recursive definitions,
+induction hypotheses for subexpressions, and explicit checks of the remaining goals.
+
+To inspect a completed proof's dependencies, use `#print axioms` with its theorem name. Inspect
+the actual output rather than assuming that a tactic always uses a particular collection of axioms.
+The course's `make axioms` command audits completed proofs alongside their source files.
 
 ## 5. Prove it
 
-The type and the three functions are given. Prove the three theorems (each is an `induction e`). Check:
+Open `Skeleton.lean`. It provides `Expr`, `eval`, `swap`, and `size`; your work is the three
+proofs below. The example `copy_eq` in §3 showed the induction method on a different function.
+Check your progress with:
 
 ```bash
 make lab C=00-foundations/03-recursion
 ```
 
-1. `swap_swap (e) : swap (swap e) = e`
-2. `eval_swap (e) : eval (swap e) = eval e`
-3. `size_swap (e) : size (swap e) = size e`
+1. **Restore the original tree.** Prove that swapping twice returns the original expression:
 
-§3.4 walks #1 in full; #2 and #3 adapt the same pattern. Try cold; §6 has graduated hints.
+   ```lean
+   theorem swap_swap (e : Expr) : swap (swap e) = e := ...
+   ```
+
+2. **Preserve the numerical meaning.** Prove that swapping preserves evaluation:
+
+   ```lean
+   theorem eval_swap (e : Expr) : eval (swap e) = eval e := ...
+   ```
+
+3. **Preserve the number of nodes.** Prove that swapping preserves size:
+
+   ```lean
+   theorem size_swap (e : Expr) : size (swap e) = size e := ...
+   ```
+
+Try each before opening the hints. Work out the property of each child in the sum case; the
+induction hypotheses depend on the particular claim you're proving. The full corrections are
+in §7 and `Solution.lean`.
+
+In the files, these names are grouped under `namespace Course03` and `namespace Expr`. The
+constructors can be written as `const` and `plus` inside that namespace. You can leave this
+organization in place while filling the theorem bodies.
 
 ## 6. Hints for the skeleton
 
-All three have the same skeleton: `induction e with | const n => ?_ | plus a b iha ihb => ?_`. The
-`const` case is always `rfl`. The work is the `plus` case.
+Take the smallest hint that lets you continue, then inspect the goal again.
 
-**1 `swap_swap`.** *Nudge:* unfold `swap` and use both induction hypotheses. *More:* the `plus` case is
-`simp only [swap, iha, ihb]` (no arithmetic needed — it's a pure rearrangement).
+**1. `swap_swap`.**
 
-**2 `eval_swap`.** *Nudge:* unfold both `swap` and `eval`, apply the hypotheses; you'll be left with a
-commutativity-of-`+` goal. *More:* `simp only [swap, eval, iha, ihb]` then `omega`.
+- *Nudge:* use induction on the expression. What does each induction hypothesis say for this goal?
+- *More:* unfold the definition of `swap` at the known constructors. The two swaps reverse the
+  children twice. Look for the smaller expressions covered by your hypotheses.
 
-**3 `size_swap`.** *Nudge:* same shape as #2, unfolding `size` instead of `eval`. *More:*
-`simp only [swap, size, iha, ihb]` then `omega`.
+**2. `eval_swap`.**
 
-## 7. Exercises (optional, for fluency)
+- *Nudge:* unfold the transformation and the evaluator in each constructor case.
+- *More:* after using the hypotheses, the sum case asks you to compare sums of natural numbers.
+  Which arithmetic fact, or tactic from §3.6, can establish the remaining equality?
 
-1. **Reuse a theorem.** Prove `eval (swap (swap e)) = eval e` in *one line*, without induction. *Hint:*
-   you already proved `swap_swap` — a theorem is a rewrite rule like any other.
-2. **Define your own recursive function, then prove a fact about it.** Define `numLeaves : Expr → Nat`
-   counting the `const` leaves (`const _ => 1`, `plus a b => numLeaves a + numLeaves b`), and prove
-   `numLeaves (swap e) = numLeaves e`. *Hint:* the proof is the §3.4 pattern.
+**3. `size_swap`.**
 
-## 8. Corrections to the optional exercises
+- *Nudge:* the induction hypotheses now concern sizes rather than evaluated values.
+- *More:* keep track of the one node contributed by the parent on each side. After unfolding
+  and using the hypotheses, the tree-specific work is finished; inspect the arithmetic that remains.
 
-### Exercise 1 — reuse `swap_swap`
+## 7. Corrections to the required exercises
+
+Read these after attempting the skeleton. The same proofs are checked in `Solution.lean`.
+
+### Exercise 1 — `swap_swap`
+
+```lean
+theorem swap_swap (e : Expr) : swap (swap e) = e := by
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap]
+    rw [iha, ihb]
+```
+
+The leaf case computes directly. In the sum case, the two hypotheses are:
+
+```text
+iha : swap (swap a) = a
+ihb : swap (swap b) = b
+⊢ swap (swap (plus a b)) = plus a b
+```
+
+The inner swap produces `plus (swap b) (swap a)`. Applying the outer swap reverses those two
+children again and swaps each one. Thus `simp only [swap]` leaves:
+
+```text
+⊢ plus (swap (swap a)) (swap (swap b)) = plus a b
+```
+
+`rw [iha, ihb]` replaces each double-swapped child with the original child. The two sides then
+match. This is a statement about equality of expression trees, not just their numerical meanings.
+
+### Exercise 2 — `eval_swap`
+
+```lean
+theorem eval_swap (e : Expr) : eval (swap e) = eval e := by
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap, eval, iha, ihb]
+    omega
+```
+
+For a leaf, both sides compute to its payload `n`. In the sum case:
+
+```text
+iha : eval (swap a) = eval a
+ihb : eval (swap b) = eval b
+⊢ eval (swap (plus a b)) = eval (plus a b)
+```
+
+Unfolding `swap` reverses the children; unfolding `eval` evaluates them:
+
+```text
+⊢ eval (swap b) + eval (swap a) = eval a + eval b
+```
+
+The hypotheses replace the two transformed evaluations. The first tactic line combines that
+unfolding and those rewrites, leaving:
+
+```text
+⊢ eval b + eval a = eval a + eval b
+```
+
+These are sums of natural numbers. `omega` proves the remaining equality, using arithmetic
+reasoning. The structural part of the proof supplied the relation between the children's values.
+
+### Exercise 3 — `size_swap`
+
+```lean
+theorem size_swap (e : Expr) : size (swap e) = size e := by
+  induction e with
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap, size, iha, ihb]
+    omega
+```
+
+A leaf has size one before and after swapping. In the sum case, we have:
+
+```text
+iha : size (swap a) = size a
+ihb : size (swap b) = size b
+⊢ size (swap (plus a b)) = size (plus a b)
+```
+
+Unfolding the two definitions gives a count for the swapped children on the left and a count for
+the original children on the right. After applying the hypotheses, the remaining goal is:
+
+```text
+⊢ 1 + size b + size a = 1 + size a + size b
+```
+
+`omega` finishes this numerical equality. The extra one counts the parent sum node on both sides;
+it doesn't disappear when the children change places.
+
+## 8. Exercises (optional, for fluency)
+
+Open `optional/Skeleton.lean`. It provides the expression type, the three functions, and the
+proved laws from the required exercises, so you can practice reusing them. The same command
+`make lab C=00-foundations/03-recursion` checks both sets. Unfinished optional work is marked
+in yellow and doesn't prevent the required lab from passing. The optional answer key is
+`optional/Solution.lean`.
+
+1. **Reuse a theorem in a larger expression.** Prove the following without induction:
+
+   ```lean
+   theorem eval_swap_swap (e : Expr) :
+       eval (swap (swap e)) = eval e := ...
+   ```
+
+   *Hint:* a proved equality can rewrite a subexpression inside another function call.
+
+2. **Define a new recursive function, then prove a property of it.** Implement `numLeaves`, which
+   counts only the `const` leaves. A leaf counts as one; a sum node contributes its children's
+   leaves, without counting itself. Then prove that swapping preserves the leaf count.
+
+   ```lean
+   def numLeaves : Expr → Nat
+     | const n => sorry
+     | plus a b => sorry
+
+   theorem leaves_swap (e : Expr) :
+       numLeaves (swap e) = numLeaves e := ...
+   ```
+
+   The skeleton provides the two constructor cases. Replace each `sorry` with an expression
+   of type `Nat` giving the leaf count for that case. No `by` is needed to write these
+   expressions. *Hint for the proof:* work
+   out the two induction hypotheses for this new function before simplifying the sum case.
+
+## 9. Corrections to the optional exercises
+
+These solutions are also in `optional/Solution.lean`, checked by `make test`. Try the optional
+skeleton before reading the corrections.
+
+### Exercise 1 — `eval_swap_swap`
 
 ```lean
 theorem eval_swap_swap (e : Expr) : eval (swap (swap e)) = eval e := by
   rw [swap_swap]
 ```
 
-No induction needed: `swap_swap` says `swap (swap e) = e`, and `rw` uses it as a rewrite, turning the
-goal into `eval e = eval e`, which `rw` closes automatically. The lesson: **every theorem you prove
-becomes a tool** — a named rewrite you can deploy later. (You could also write `simp [swap_swap]`.)
+The theorem `swap_swap` supplies an equality of expressions. `rw` uses it inside `eval`, replacing
+`swap (swap e)` with `e`. The goal becomes `eval e = eval e` and closes by reflexivity. No new
+induction is needed: we use a general result already established for every expression.
 
-### Exercise 2 — define and prove
+### Exercise 2 — `numLeaves` and `leaves_swap`
 
 ```lean
 def numLeaves : Expr → Nat
-  | const _  => 1
+  | const _ => 1
   | plus a b => numLeaves a + numLeaves b
 
 theorem leaves_swap (e : Expr) : numLeaves (swap e) = numLeaves e := by
   induction e with
-  | const n          => rfl
-  | plus a b iha ihb => simp only [swap, numLeaves, iha, ihb]; omega
+  | const n => rfl
+  | plus a b iha ihb =>
+    simp only [swap, numLeaves, iha, ihb]
+    omega
 ```
 
-Defining `numLeaves` is the same recursion shape as `size` — a case per constructor, combining the
-children's results on `plus`. The proof is identical to `size_swap`: unfold `swap` and `numLeaves`,
-apply the two hypotheses, and let `omega` mop up the `+`-commutativity. Once you can *define* functions
-on a type and *prove* by induction over it, you can handle any tree-shaped data — including the formulas
-of Course 1.
+The function has the same input type as `size`, but counts different things. The leaf contributes
+one. At a sum node we combine the children's counts without adding a node for the parent. For
+example, the tree `plus (const 2) (plus (const 3) (const 4))` has three leaves and five nodes.
 
-## 9. Going further
+The proof's leaf branch computes to `1 = 1`. In the sum branch, the hypotheses say that swapping
+each child preserves its leaf count. Unfolding the transformation and the counting function, then
+using those hypotheses, leaves:
 
-- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, chapters *Inductive Types*
-  and *Induction and Recursion*: the full story, including the auto-generated recursor and
-  pattern-matching compilation.
-- **Natural Number Game** — its *Multiplication* / *Power* worlds are more structural-recursion practice.
-- **Next:** Course 0.4 — natural deduction *on paper* lined up against Lean, and the
-  constructive-vs-classical boundary — the last foundations stop before Course 1 builds the prover.
+```text
+⊢ numLeaves b + numLeaves a = numLeaves a + numLeaves b
+```
+
+`omega` proves that arithmetic equality. The proof follows the same structural method as the
+node-count exercise, but its function and its intermediate arithmetic expressions are different.
+
+## 10. Conclusion
+
+An inductive declaration describes how data is built. For `Expr`, one constructor stores a number
+and the other stores two expression children. Structural recursion follows that description to
+compute, while structural induction supplies a proof for each child when reasoning about a parent.
+
+The central new habit is to read the induction hypotheses, not just their names. In one theorem
+they describe the result of transforming a child twice; in another they describe its evaluated
+value or its size. Unfold the definitions until those smaller expressions become visible, then
+use the hypotheses to make progress. Arithmetic automation can finish a numerical goal only after
+the structural reasoning has put it in the right form.
+
+We defined functions on trees, then proved properties relating those functions. The words
+**structure**, **meaning**, and **measurements** describe what we look at through them. For
+example, consider the expression representing `2 + (3 + 4)`:
+
+```text
+      +
+     / \
+    2   +
+       / \
+      3   4
+```
+
+- Its **structure** is the arrangement of constructors: a sum with a leaf on the left and
+  another sum on the right. `swap` transforms this arrangement by exchanging the children
+  at every sum node.
+- Its **meaning**, given here by `eval`, is the number it computes: **9**.
+- Its **measurements** describe the tree numerically: `size` counts **5 nodes**, while
+  `numLeaves` counts **3 leaves**.
+
+These describe different aspects of the same tree. The expression `(2 + 3) + 4` has a different
+structure but also evaluates to 9. The single leaf `const 9` also evaluates to 9, although it
+has only one node and one leaf. Knowing the computed value therefore doesn't tell us the
+tree's structure or its node count.
+
+The theorems express precisely what a transformation preserves:
+
+```text
+eval (swap e) = eval e                 preserves the computed value
+size (swap e) = size e                 preserves the number of nodes
+numLeaves (swap e) = numLeaves e       preserves the number of leaves
+```
+
+Each equality relates functions we defined, and each requires its own proof for every tree
+`e`. Proving that the computed value is preserved doesn't by itself establish that the node
+count is preserved.
+
+Together with the logical evidence from the previous lesson, these tools prepare us to
+represent formulas and prove properties of programs that manipulate them.
+
+## 11. Going further
+
+- **Theorem Proving in Lean 4** — the local copy at `../../../references/theorem_proving_in_lean4`,
+  if available: the *Inductive Types* and *Induction and Recursion* chapters discuss the principles
+  and function definitions used here.
+- **Natural Number Game** — the *Multiplication* and *Power* worlds provide further practice with
+  recursive definitions and induction.
+- **Next:** the logic lesson connects natural deduction with Lean and develops constructive and
+  classical reasoning, before we build a verified prover in the natural-deduction course.
