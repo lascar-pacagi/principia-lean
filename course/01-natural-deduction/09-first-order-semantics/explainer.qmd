@@ -1,0 +1,251 @@
+---
+title: "1.9 — First-order semantics: domains, models, and quantifiers"
+---
+
+> **Where you are.** Terms and quantified formulas are syntax. Their meaning now depends
+> on a domain of objects, interpretations of symbols, and values for free variables. This
+> lesson develops that meaning before we ask whether a proof rule preserves it.
+
+## 1. The question: what makes P(x) true?
+
+A formula P(x) can mean different things in different interpretations. Over natural numbers,
+P could mean “is even”; over people, “is a teacher.” Validity must cover every interpretation
+of the symbols, rather than one intended story.
+
+A **domain** D is a Lean type of objects. A **model** supplies the meanings of function and
+predicate symbols. An **environment** `ρ : Nat → D` supplies values for free variables.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+
+def trueAtTrueModel : Model Bool :=
+  ⟨fun _ _ => false, fun _ args => args = [true]⟩
+```
+
+
+## 2. Read the model's two fields
+
+```text
+Model D:
+  function  : Nat → List D → D
+  predicate : Nat → List D → Prop
+```
+
+Given a function-symbol name and argument objects, the first field returns an object.
+Given a predicate-symbol name and argument objects, the second returns a Lean proposition.
+Thus predicate evaluation isn't a Boolean table for arbitrary domains.
+
+For a small example, the supplied `trueAtTrueModel` uses D = Bool. Its functions always
+return false, and a predicate holds exactly when its argument list is `[true]`. The tuple
+`⟨functionMeaning, predicateMeaning⟩` constructs a `Model` by supplying these two fields in order.
+This is one particular model, not the semantics of every predicate in the language.
+
+```lean
+#eval Term.evaluate trueAtTrueModel (fun _ => true) (.variable 0)
+#eval Term.evaluate trueAtTrueModel (fun _ => true) (.function 7 [])
+```
+
+They display true and false: the variable gets its value from the environment; the constant
+gets its value from the model's interpretation of its symbol.
+
+## 3. Evaluate connectives and quantifiers
+
+`Formula.evaluate M ρ a` is a Lean proposition. For predicate syntax it applies the model's
+predicate field to the evaluated argument terms. For connectives it uses Lean's corresponding
+logical connectives. Quantifiers range over objects of D:
+
+```text
+evaluate M ρ (universal body)   = ∀ x : D, evaluate M (extend x ρ) body
+evaluate M ρ (existential body) = ∃ x : D, evaluate M (extend x ρ) body
+```
+
+`extend x ρ` gives x to index zero and shifts the older environment values outward. This is
+the semantic counterpart of entering a syntactic binder.
+
+For ∀x (P(x) → P(x)), fix an arbitrary object x, receive evidence of P(x), then return that
+evidence. In Lean:
+
+```lean
+example {D : Type} (M : Model D) (ρ : Nat → D) (p : Nat) :
+    (Formula.universal (.implies (.predicate p [.variable 0])
+      (.predicate p [.variable 0]))).evaluate M ρ := by
+  intro x hp
+  exact hp
+```
+
+The proof doesn't enumerate objects. It works uniformly for an arbitrary x. The type of hp
+is the interpreted predicate at that object, under the extended environment.
+
+## 4. Why the substitution theorem matters
+
+Syntax and meaning must agree about substitution. `Term.evaluate_substitute` says evaluating
+a substituted term is the same as evaluating the original term under substituted variable
+values. For formulas, the corresponding result is an equivalence:
+
+```text
+Formula.evaluate_instantiate M ρ body t :
+  evaluate M ρ (body.instantiate t) ↔
+  evaluate M (extend (Term.evaluate M ρ t) ρ) body
+```
+
+The left side changes syntax; the right side changes the environment. Both express the same
+claim. `.mp` uses the implication from left to right, and `.mpr` from right to left. The
+exercises will use these two directions to connect quantifier evidence to instantiation.
+
+The library proves this connection for every formula, including nested quantifiers. Beneath
+a binder, the proof shows that lifting a substitution agrees with extending the environment.
+Without that argument, a program manipulating indices wouldn't yet justify semantic claims.
+
+## 5. Entailment over all interpretations
+
+`Formula.Entails Γ a` means that for every nonempty domain, every model, and every environment,
+truth of all formulas in Γ implies truth of a. `Formula.Valid a` is this claim with Γ empty.
+The domain is explicitly nonempty, as in standard first-order logic.
+
+A countermodel can refute validity: one domain, one model, and one environment suffice if
+they satisfy the assumptions and falsify the conclusion. A finite model is useful for such
+counterexamples, but checking some finite models doesn't establish validity over all domains.
+There is no finite truth table covering arbitrary first-order interpretations.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=01-natural-deduction/09-first-order-semantics
+```
+
+**Use a universal semantic hypothesis.** The hypothesis says the body holds for every domain object. Establish truth of the syntactic instance at t.
+
+```lean
+theorem semantic_specialization {D : Type} (M : Model D) (ρ : Nat → D)
+    (body : Formula) (t : Term) (h : (Formula.universal body).evaluate M ρ) :
+    (body.instantiate t).evaluate M ρ := by
+  sorry
+```
+
+**Build an existential semantic claim.** You know that an instance at term t holds in this model. Turn it into evidence that some domain object satisfies the body.
+
+```lean
+theorem semantic_witness {D : Type} (M : Model D) (ρ : Nat → D)
+    (body : Formula) (t : Term) (h : (body.instantiate t).evaluate M ρ) :
+    (Formula.existential body).evaluate M ρ := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `semantic_specialization`
+
+**First hint.** The universal hypothesis is a function taking an object of D.
+
+**Next hint.** Supply the value of t, then use the right-to-left direction of the instantiation equivalence.
+
+### `semantic_witness`
+
+**First hint.** The existential semantic goal needs an object and evidence about it.
+
+**Next hint.** Choose the interpretation of t; translate your instance hypothesis with the equivalence.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `semantic_specialization`
+
+```lean
+theorem semantic_specialization {D : Type} (M : Model D) (ρ : Nat → D)
+    (body : Formula) (t : Term) (h : (Formula.universal body).evaluate M ρ) :
+    (body.instantiate t).evaluate M ρ := by
+  apply (Formula.evaluate_instantiate M ρ body t).mpr
+  exact h (Term.evaluate M ρ t)
+```
+
+The hypothesis h takes an arbitrary domain object. Applying it to the interpretation of t proves the body under the extended environment. `.mpr` then translates that semantic statement into truth of the syntactically instantiated formula.
+
+### `semantic_witness`
+
+```lean
+theorem semantic_witness {D : Type} (M : Model D) (ρ : Nat → D)
+    (body : Formula) (t : Term) (h : (body.instantiate t).evaluate M ρ) :
+    (Formula.existential body).evaluate M ρ := by
+  exact ⟨Term.evaluate M ρ t, (Formula.evaluate_instantiate M ρ body t).mp h⟩
+```
+
+The pair supplies the interpretation of t as the existential witness. `.mp` turns truth of the instance into truth of the body under that extended environment. The witness is an object of D here, whereas t itself is syntax.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Refute a universal claim in the supplied model.** Choose one Boolean object at which the interpreted predicate fails.
+
+```lean
+theorem not_every_value_satisfies :
+    ¬(Formula.universal (.predicate 0 [.variable 0])).evaluate trueAtTrueModel
+      (fun _ => false) := by
+  sorry
+```
+
+*Hint:* Apply the hypothetical universal claim to the Boolean object false, then simplify its interpretation.
+
+**Find a semantic witness in that model.** Prove an existential claim by exhibiting a domain object.
+
+```lean
+theorem some_value_satisfies :
+    (Formula.existential (.predicate 0 [.variable 0])).evaluate trueAtTrueModel
+      (fun _ => false) := by
+  sorry
+```
+
+*Hint:* Choose the Boolean object true as semantic witness and check the model predicate.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `not_every_value_satisfies`
+
+```lean
+theorem not_every_value_satisfies :
+    ¬(Formula.universal (.predicate 0 [.variable 0])).evaluate trueAtTrueModel
+      (fun _ => false) := by
+  intro h
+  have hf := h false
+  simp [Formula.evaluate, Term.evaluate, extend, trueAtTrueModel] at hf
+```
+
+After intro h, the goal is False and h supplies the predicate for every Boolean object. Its false instance requires [false] = [true], which simplification refutes. This exhibits a countermodel row rather than a general validity procedure.
+
+### `some_value_satisfies`
+
+```lean
+theorem some_value_satisfies :
+    (Formula.existential (.predicate 0 [.variable 0])).evaluate trueAtTrueModel
+      (fun _ => false) := by
+  exact ⟨true, by simp [Formula.evaluate, Term.evaluate, extend, trueAtTrueModel]⟩
+```
+
+The witness true makes the predicate argument list [true], exactly the model condition. The original free-variable environment is irrelevant to this bound occurrence, since extend replaces index zero with the witness.
+
+## 11. Conclusion
+
+A model interprets symbols, an environment assigns variable values, and quantifiers range
+over domain objects. The substitution theorem connects syntactic instantiation with semantic
+environment extension. Validity covers all nonempty domains and models; checking a few finite
+examples cannot establish it. These definitions are the specification for the next lesson.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 1.10 — First-order natural deduction and fresh variables.

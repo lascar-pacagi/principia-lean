@@ -14,17 +14,17 @@ namespace CompleteSolverChecks
 /-- An independent spelling of the truth conditions, especially implication. -/
 def referenceEval (v : Nat → Bool) : Form → Bool
   | .var i => v i
-  | .fls => false
+  | .falsum => false
   | .imp a b => if referenceEval v a then referenceEval v b else true
   | .and a b => if referenceEval v a then referenceEval v b else false
   | .or a b => if referenceEval v a then true else referenceEval v b
 
 /-- All formulas up to a given depth, using two atoms and falsehood. -/
 def formulas : Nat → List Form
-  | 0 => [.var 0, .var 1, .fls]
+  | 0 => [.var 0, .var 1, .falsum]
   | n + 1 =>
     let children := formulas n
-    [.var 0, .var 1, .fls] ++ children.flatMap (fun a =>
+    [.var 0, .var 1, .falsum] ++ children.flatMap (fun a =>
       children.flatMap (fun b => [.imp a b, .and a b, .or a b]))
 
 def referenceValid (a : Form) : Bool :=
@@ -45,7 +45,7 @@ def validate (a : Form) : Bool :=
 #guard (solve (((Form.var 0 ⇒ Form.var 1) ⇒ Form.var 0) ⇒ Form.var 0)).isValid = true
 #guard (solve (Form.var 0 ⋎ ∼Form.var 0)).isValid = true
 #guard (solve (∼(Form.var 0 ⋏ Form.var 1) ⇒ (∼Form.var 0 ⋎ ∼Form.var 1))).isValid = true
-#guard (solve Form.fls).isValid = false
+#guard (solve Form.falsum).isValid = false
 #guard (solve Form.top).isValid = true
 #guard (solve (Form.var 0 ⇒ Form.var 1)).isValid = false
 #guard (solve (Form.var 4 ⇒ Form.var 4)).isValid = true

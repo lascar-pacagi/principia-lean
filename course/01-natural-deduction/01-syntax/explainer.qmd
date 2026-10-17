@@ -21,11 +21,25 @@ The supplied type has these constructors:
 
 ```text
 Form.var : Nat → Form
-Form.fls : Form
+Form.falsum : Form
 Form.imp : Form → Form → Form
 Form.and : Form → Form → Form
 Form.or  : Form → Form → Form
 ```
+
+**`falsum` means logical falsehood**, conventionally written `⊥`. It is a constructor of
+our formula type, so `Form.falsum : Form` is a syntax value we can build. Keep three distinct
+objects in mind:
+
+| Expression | Type | Role |
+|---|---|---|
+| `false` | `Bool` | A Boolean value. |
+| `False` | `Prop` | Lean's proposition representing impossibility. |
+| `Form.falsum` | `Form` | The formula representing falsehood in the logic we are defining. |
+
+Constructing `Form.falsum` doesn't prove `False`: it builds a formula that our evaluator
+will interpret as false. A derivation of this formula would be a different object, governed
+by the proof rules introduced in lesson 1.3.
 
 A `Form` is syntax. It is different from a Lean proposition of type `Prop`. We will define
 what a formula means and what counts as a derivation of it in later lessons.
@@ -35,10 +49,28 @@ These commands use the supplied library definitions:
 
 ```lean
 import Principia.Logic.Syntax
-open Principia Principia.Form
-open scoped Principia.Form Principia
+open Principia
+open scoped Principia.Form
 ```
 
+
+The three lines have different jobs:
+
+- **`import Principia.Logic.Syntax`** loads the module defined in
+  `Principia/Logic/Syntax.lean`, including the formula type, its constructors, definitions,
+  and theorems. The module path names a file; it doesn't automatically shorten declaration
+  names or activate its scoped notation.
+- **`open Principia`** lets us write `Form` instead of `Principia.Form`. Therefore `Form.var`
+  refers to `Principia.Form.var`. It changes how names are resolved, not the definitions.
+- **`open scoped Principia.Form`** enables symbols such as `⇒`, `⋏`, `⋎`, `∼`, and `⊥`.
+  We still write `Form.var`, with its prefix. For example, we can now write
+  `Form.var 0 ⇒ Form.var 1` instead of `Form.imp (Form.var 0) (Form.var 1)`.
+
+We could additionally write `open Principia.Form` to use `var`, `neg`, or `size` without
+`Form.`. Opening a namespace permits shorter names; it doesn't forbid qualified names.
+For this lesson, we keep `Form.var`, `Form.neg`, and `Form.size` explicit, so that extra
+opening isn't needed. Later, the scope `Principia` will supply notation for derivations
+such as `Γ ⊢ a`; it isn't needed for this syntax lesson.
 
 ```lean
 #check Form.var 0
@@ -53,8 +85,8 @@ we count occurrences, not distinct names. The generated `Repr` printer can displ
 
 ### Derived connectives
 
-Negation uses the definition `Form.neg a := Form.imp a Form.fls`: refuting a means that a
-implies falsehood. `Form.top` is the formula `neg fls`, and `Form.iff a b` is the conjunction
+Negation uses the definition `Form.neg a := Form.imp a Form.falsum`: refuting a means that a
+implies falsehood. `Form.top` is the formula `neg falsum`, and `Form.iff a b` is the conjunction
 of the two implications. They are definitions built from the primitive constructors.
 
 ```lean
@@ -84,9 +116,62 @@ and implication. Parentheses remain useful when reading a new statement.
 
 ## 3. Definitions, recursion, and induction
 
-`size` counts constructors: each leaf contributes one; each binary node contributes one
-plus its two children's sizes. For a concrete tree it computes directly. For an arbitrary
-tree, induction provides one case per constructor.
+`size` counts the **nodes in a formula's tree**. For example, the formula p ⇒ q is built as:
+
+```lean
+#check Form.imp (Form.var 0) (Form.var 1)
+```
+
+Its tree is:
+
+```text
+        imp
+       /   \
+    var 0  var 1
+```
+
+There are three nodes: one `imp`, one `var 0`, and one `var 1`. Each `var` is a **leaf**:
+it contains no smaller formula. The index 0 or 1 names the atom; it doesn't count as an
+additional formula node. The constructor `falsum` is also a leaf and counts as one node.
+
+The `imp` node contains two smaller formulas, its **children**. To count the whole tree,
+count that node itself, then add the node counts of both children. This is the defining
+equation:
+
+```text
+size (imp a b) = 1 + size a + size b
+```
+
+The `1` counts the `imp` node. In our concrete example, the calculation is:
+
+```text
+size (imp (var 0) (var 1))
+= 1 + size (var 0) + size (var 1)
+= 1 + 1 + 1
+= 3
+```
+
+Conjunction and disjunction nodes also have two children, so they follow the same counting
+rule. The supplied function is defined by **recursion**: it calls `size` on the children
+to compute the size of the parent. Those children are smaller formula trees, which is why
+the recursive computation terminates.
+
+**Induction is a separate tool for proving a property for every formula.** If all we know is
+`a : Form`, we don't yet know how a was constructed. An induction proof handles each possible
+constructor:
+
+- `var i`: an atom leaf, with no smaller formula.
+- `falsum`: a falsehood leaf, with no smaller formula.
+- `imp a b`: an implication with two children.
+- `and a b`: a conjunction with two children.
+- `or a b`: a disjunction with two children.
+
+In each of the last three cases, induction supplies a hypothesis saying the property holds
+for a and another saying it holds for b. We use those hypotheses to establish the property
+for the parent formula. The leaf cases have no induction hypotheses.
+
+So **recursion defines the calculation**, while **induction proves a property for all
+formula trees**. We will first practice the induction structure on a different function.
 
 To practice that method without solving the size exercises, consider a function that rebuilds
 an identical formula:
@@ -94,7 +179,7 @@ an identical formula:
 ```lean
 def rebuild : Form → Form
   | .var i => .var i
-  | .fls => .fls
+  | .falsum => .falsum
   | .imp a b => .imp (rebuild a) (rebuild b)
   | .and a b => .and (rebuild a) (rebuild b)
   | .or a b => .or (rebuild a) (rebuild b)
@@ -102,7 +187,7 @@ def rebuild : Form → Form
 theorem rebuild_eq (a : Form) : rebuild a = a := by
   induction a with
   | var i => rfl
-  | fls => rfl
+  | falsum => rfl
   | imp a b iha ihb =>
     simp only [rebuild]
     rw [iha, ihb]
@@ -198,15 +283,15 @@ Try the exercises first. These proofs match `Solution.lean`, checked by `make te
 theorem size_pos (φ : Form) : 1 ≤ φ.size := by
   induction φ with
   | var i => exact Nat.le_refl 1
-  | fls => exact Nat.le_refl 1
+  | falsum => exact Nat.le_refl 1
   | imp a b iha ihb =>
-    simp only [size]
+    simp only [Form.size]
     omega
   | and a b iha ihb =>
-    simp only [size]
+    simp only [Form.size]
     omega
   | or a b iha ihb =>
-    simp only [size]
+    simp only [Form.size]
     omega
 ```
 
@@ -216,7 +301,7 @@ Each branch reduces the lower bound to natural-number arithmetic. `omega` handle
 
 ```lean
 theorem size_neg (φ : Form) : (∼φ).size = φ.size + 2 := by
-  simp only [neg, size]; omega
+  simp only [Form.neg, Form.size]; omega
 ```
 
 Negation adds an implication node and a falsehood leaf. After unfolding, the kernel exposes `1 + a.size + 1`; arithmetic proves the requested ordering of those additions.
@@ -267,7 +352,7 @@ theorem top_size : Form.top.size = 3 := by
   rfl
 ```
 
-`top` expands to `imp fls fls`. Each falsehood leaf has size one and the implication contributes one more, so the entire closed expression computes to three. `rfl` checks that computation.
+`top` expands to `imp falsum falsum`. Each falsehood leaf has size one and the implication contributes one more, so the entire closed expression computes to three. `rfl` checks that computation.
 
 
 ## 11. Conclusion

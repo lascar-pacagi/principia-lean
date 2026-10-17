@@ -22,9 +22,9 @@ open scoped Principia.Form Principia
 
 ```lean
 def onlyFirst : Nat → Bool := fun i => i == 0
-#eval onlyFirst 0
-#eval onlyFirst 1
-#eval eval onlyFirst ((Form.var 0 ⋎ Form.var 1) ⇒ Form.var 1)
+#eval onlyFirst 0  -- true
+#eval onlyFirst 1  -- false
+#eval eval onlyFirst ((Form.var 0 ⋎ Form.var 1) ⇒ Form.var 1)  -- false
 ```
 
 These print `true`, `false`, and `false`. `fun i => ...` defines a function: given an index,
@@ -37,7 +37,7 @@ The supplied `eval` has one equation per constructor:
 
 ```text
 eval v (var i)   = v i
-eval v fls      = false
+eval v falsum    = false
 eval v (imp a b) = (!eval v a) || eval v b
 eval v (and a b) = eval v a && eval v b
 eval v (or a b)  = eval v a || eval v b
@@ -70,9 +70,36 @@ input into `true`; `true || x` computes to `true` regardless of the unknown seco
 
 ## 3. A proposition about all valuations
 
-`Tautology a` is defined as `∀ v, eval v a = true`. Its type is `Prop`: it is a claim about
-all valuations, not another Boolean or another formula. To prove it, introduce an arbitrary
-valuation. For example:
+We define a **tautology** to be a formula that evaluates to true under every valuation:
+
+```lean
+def Tautology (φ : Form) : Prop :=
+  ∀ v, eval v φ = true
+```
+
+`Tautology` is our definition, provided in `Principia/Logic/Semantics.lean` and in your
+`Skeleton.lean`; it is not a built-in Lean keyword. Read its parts as follows:
+
+- `(φ : Form)`: its input is a formula tree.
+- `: Prop`: its output is a proposition that we can try to prove.
+- `∀ v`: for every valuation `v : Nat → Bool`. Lean infers this type from `eval v φ`.
+- `eval v φ = true`: the formula must evaluate to true under that valuation.
+
+Thus `eval v φ` computes one Boolean value, while `Tautology φ` claims that the value
+is true for **every** possible assignment. The name `Tautology` adds no extra condition:
+it abbreviates exactly the proposition on the right of `:=`.
+
+If the goal is `Tautology φ`, `intro v` opens this universal quantifier. Lean unfolds the
+definition as needed, and the proof state becomes:
+
+```text
+φ : Form
+v : Nat → Bool
+⊢ eval v φ = true
+```
+
+We have not chosen particular truth values: `v` is arbitrary, so the remaining proof
+must work for any valuation. For example:
 
 ```lean
 example (a b : Form) : Tautology ((a ⋏ b) ⇒ b) := by
@@ -83,52 +110,306 @@ example (a b : Form) : Tautology ((a ⋏ b) ⇒ b) := by
 
 After `intro v`, we must prove the formula evaluates to true for this arbitrary valuation.
 Unfolding leaves `(!(eval v a && eval v b) || eval v b) = true`. There are two Boolean values
-to inspect, giving four cases. `<;>` applies the following tactic to every goal produced by
-the preceding tactic, so both `cases` commands reach all four combinations. `rfl` computes
-each remaining goal. This proves validity for arbitrary formulas a and b.
+to inspect, giving four cases. `rfl` computes each remaining goal. This proves validity for
+arbitrary formulas a and b.
 
-`Entails Γ a` allows assumptions. Its definition is:
+### What `<;>` does, one branch at a time
+
+Read `firstTactic <;> nextTactic` as: **run the first tactic, then run the next tactic on
+every subgoal it creates**. It is one tactic-combining operator. It doesn't choose a proof
+for you: the following tactic still has to work in each branch.
+
+In our line:
 
 ```text
-∀ v, (∀ b, b ∈ Γ → eval v b = true) → eval v a = true
+cases eval v a <;> cases eval v b <;> rfl
 ```
 
-For example, `Entails [a, a ⇒ b] b` asks about valuations making both listed assumptions
-true. An assignment with a false assumption cannot refute that entailment. The notation
-`Γ ⊨ a` abbreviates this semantic statement.
+1. `cases eval v a` creates two branches: its value is false or true.
+2. The first `<;>` runs `cases eval v b` in **both** branches. Each splits again, giving
+   the four combinations (false, false), (false, true), (true, false), and (true, true).
+3. The second `<;>` runs `rfl` in **all four** branches. Each goal is now a concrete
+   Boolean computation that reduces to `true = true`.
+
+Here is the same proof with every branch written explicitly:
+
+```lean
+example (a b : Form) : Tautology ((a ⋏ b) ⇒ b) := by
+  intro v
+  simp only [eval]
+  cases eval v a with
+  | false =>
+    cases eval v b with
+    | false => rfl
+    | true => rfl
+  | true =>
+    cases eval v b with
+    | false => rfl
+    | true => rfl
+```
+
+A newline or a plain `;` sequences tactics on the current goal; it doesn't repeat the next
+tactic across the new branches. `<;>` saves that repetition when the same next step works
+in each branch. If different branches need different arguments, write them separately as above.
+
+### Entailment: what follows when assumptions are true?
+
+`Entails` is a definition we write in Lean for this course. It is not a built-in Lean
+keyword. Lean supplies `Prop`, `∀`, `→`, lists, and equality; we use them to define the
+semantic claim that a conclusion follows from a list of assumptions:
+
+```text
+def Entails (Γ : List Form) (a : Form) : Prop :=
+  ∀ v, (∀ b, b ∈ Γ → eval v b = true) → eval v a = true
+```
+
+`Γ` (Greek capital gamma) is simply the name of a list of formulas, such as `[a, a ⇒ b]`.
+Its elements are the assumptions; `a` in the definition is the requested conclusion.
+Both are formula **data**. `Entails Γ a : Prop` is the Lean proposition we state about them.
+
+Read the definition from the outside inward:
+
+- `∀ v`: choose any valuation `v : Nat → Bool`.
+- `∀ b, b ∈ Γ → eval v b = true`: suppose every formula listed in Γ evaluates to true
+  under that **same** valuation. The membership condition restricts this requirement to Γ;
+  it does not assert that every possible formula is true.
+- `→ eval v a = true`: under that assumption, the conclusion must also evaluate to true.
+
+Thus a counterexample to `Entails Γ a` must make **all assumptions true and the conclusion
+false at once**. A valuation making one assumption false does not meet the condition we
+are investigating.
+
+For example, `Entails [a, a ⇒ b] b` says: whenever a and “a implies b” are both true, b is
+true. Here are all four combinations of their Boolean values:
+
+| a | b | a ⇒ b | Are both assumptions true? | What does this row show? |
+|---|---|---|---|---|
+| false | false | true | No: a is false. | Not a counterexample. |
+| false | true | true | No: a is false. | Not a counterexample. |
+| true | false | false | No: a ⇒ b is false. | Not a counterexample. |
+| true | true | true | Yes. | The conclusion b is true. |
+
+The row with a true and b false would refute `Entails [a] b`. It does not refute
+`Entails [a, a ⇒ b] b`, because the additional implication assumption is false in that row.
+
+We can prove the latter semantic claim directly in Lean:
+
+```lean
+example (a b : Form) : Entails [a, a ⇒ b] b := by
+  intro v hΓ  -- Two introductions: intro v, then intro hΓ.
+  have ha : eval v a = true := hΓ a (by simp)
+  have hab : eval v (a ⇒ b) = true := hΓ (a ⇒ b) (by simp)
+  simp only [eval] at hab
+  rw [ha] at hab
+  simp at hab
+  exact hab
+```
+
+After `intro v hΓ`, the proof state is:
+
+```text
+v : Nat → Bool
+hΓ : ∀ c, c ∈ [a, a ⇒ b] → eval v c = true
+⊢ eval v b = true
+```
+
+The name `hΓ` is ours; its type comes from introducing the premise in the definition.
+It takes a formula and evidence that the formula belongs to the list. So `hΓ a (by simp)`
+supplies truth of a, and `hΓ (a ⇒ b) (by simp)` supplies truth of the implication.
+Each `by simp` proves the corresponding list membership.
+
+`at hab` tells a tactic to act on the hypothesis named `hab`. Without this location,
+`simp only [eval]` simplifies the current goal; `simp only [eval] at hab` simplifies the
+statement proved by `hab`. Likewise, `rw [ha] at hab` rewrites inside that hypothesis.
+Here its type changes as follows, while the goal remains `eval v b = true`:
+
+```text
+hab : eval v (a ⇒ b) = true                 -- before
+hab : (!eval v a || eval v b) = true        -- after simp only [eval] at hab
+hab : (!true || eval v b) = true            -- after rw [ha] at hab
+```
+
+The last two lines finish in separate steps. `simp at hab` reduces `!true` to false and
+`false || eval v b` to `eval v b`. Now `hab : eval v b = true`, so `exact hab` closes the goal.
+
+You can combine those two steps here with a tactic called **`simpa`**:
+
+```text
+simpa using hab
+```
+
+`using hab` selects the proof to use. `simpa` simplifies both the goal and the statement
+proved by `hab`, then checks that they match and finishes the proof. Here the goal already
+has the desired form; simplifying the statement of `hab` makes it match. In this particular
+Boolean example, `exact hab` also works directly after the rewrite, because Lean can compute
+these reductions while checking the types. `simpa` also handles simplifications that need
+proved lemmas. This is a proof of the semantic claim using Lean's own logic.
+
+The notation `Γ ⊨ a` abbreviates `Entails Γ a`. The symbol `⇒` inside a formula builds
+`Form.imp` data; the `→` in the definition above is Lean's implication between propositions.
+With Γ empty, there are no assumptions to restrict the valuations, so `Entails [] a`
+expresses the same claim as `Tautology a`.
 
 ## 4. Why a finite table is enough
 
-Although valuations are functions on all natural numbers, any particular formula uses only
-finitely many indices. `maxVar a` is an exclusive upper bound: all its indices are smaller.
-For `var 3`, the bound is 4, not 1. It is an index bound, not the number of distinct atoms.
+Three supplied functions build and check a finite truth table: `maxVar` chooses its columns,
+`allEnvs` builds its rows, and `taut?` checks the formula on those rows. These are definitions
+in our course library, written in Lean.
 
-```lean
-#eval maxVar (Form.var 0 ⋎ Form.var 2)
-#eval (allEnvs 2).map (fun v => [v 0, v 1])
-#eval taut? ((Form.var 0 ⋎ Form.var 1) ⇒ Form.var 1)
+### 4.1 `maxVar`: how many index positions must the table cover?
+
+Although valuations are functions on all natural numbers, any particular formula uses only
+finitely many indices. Here is the recursive definition:
+
+```text
+def maxVar : Form → Nat
+  | .var n   => n + 1
+  | .falsum  => 0
+  | .imp a b => max (maxVar a) (maxVar b)
+  | .and a b => max (maxVar a) (maxVar b)
+  | .or a b  => max (maxVar a) (maxVar b)
 ```
 
-The bound printed is 3. The list prints the four assignments to indices 0 and 1. The final
-check returns false because p true, q false is a counterexample. `allEnvs n` fixes unused
-indices at false and enumerates $2^n$ assignments below n. This can include redundant columns
-when atom indices are sparse.
+For an atom at index n, we need all index positions from zero through n, so the bound is n + 1.
+Falsehood contains no atoms, giving zero. At a binary node, `max` takes the larger of the
+two children's bounds. It is Lean's ordinary maximum function on natural numbers.
 
-`taut? a` checks `eval v a` for every listed valuation. Later, the final solver uses the
-certified theorem `taut?_eq_true_iff a : taut? a = true ↔ Tautology a`. Its proof has two
-parts: evaluation ignores indices outside the bound, and the table represents every assignment
-inside it. Thus we will connect the executable Boolean check to the universal proposition.
+For example:
 
-For any atom assignment, `a ⋎ ∼a` evaluates to true by two Boolean cases. This doesn't give
-an algorithm deciding an arbitrary Lean proposition `p : Prop`: here we are evaluating finite
-formula syntax under assigned Boolean values.
+```text
+maxVar (var 0 ⋎ var 2)
+  = max (maxVar (var 0)) (maxVar (var 2))
+  = max 1 3
+  = 3
+```
 
-## 5. Keep the three types visible
+Thus the table covers indices 0, 1, and 2, even though this formula never uses index 1.
+`maxVar` gives an **exclusive upper bound**: every atom index is strictly smaller than it.
+It does not count distinct atoms, and it does not evaluate their truth values.
+
+```lean
+#eval maxVar (Form.var 3)  -- 4
+#eval maxVar (Form.var 0 ⋎ Form.var 2)  -- 3
+```
+
+### 4.2 `allEnvs`: build all assignments for those columns
+
+An environment here is another name for a valuation, a function `Nat → Bool`.
+`allEnvs n : List (Nat → Bool)` returns a list of such functions:
+
+```text
+def allEnvs : Nat → List (Nat → Bool)
+  | 0 => [fun _ => false]
+  | n + 1 => (allEnvs n).flatMap (fun v =>
+      [v, fun k => if k == n then true else v k])
+```
+
+At zero, there are no columns to choose. There is **one** empty assignment, represented by
+a function returning false everywhere. The result is a singleton list, not an empty list.
+
+To add column n, take each existing valuation v and produce two rows:
+
+- Keep v, which has false at the new index n.
+- Create a function that returns true at n and agrees with v at every other index.
+
+`flatMap` applies this two-row construction to each old valuation and joins the resulting
+small lists into one list. Each new column doubles the number of rows, so there are $2^n$ rows.
+Indices outside the selected columns keep their default value false.
+
+For two columns, we can inspect the returned functions by applying each to indices 0 and 1:
+
+```lean
+#eval (allEnvs 0).map (fun v => [v 0, v 1])  -- [[false, false]]
+#eval (allEnvs 1).map (fun v => [v 0, v 1])  -- [[false, false], [true, false]]
+#eval (allEnvs 2).map (fun v => [v 0, v 1])
+-- [[false, false], [false, true], [true, false], [true, true]]
+```
+
+Here `.map (fun v => [v 0, v 1])` turns each valuation into a readable pair of its outputs.
+The original entries of `allEnvs` are functions; this display merely lets us see their rows.
+
+### 4.3 `taut?`: does every generated row make the formula true?
+
+The runnable checker is:
+
+```text
+def taut? (a : Form) : Bool :=
+  (allEnvs (maxVar a)).all (fun v => eval v a)
+```
+
+Read it in three steps. First compute `maxVar a` to choose the column bound. Then construct
+those rows with `allEnvs`. Finally, `List.all` applies `fun v => eval v a` to every row:
+it returns true if every result is true, and false if any result is false.
+
+For `(var 0 ⋎ var 1) ⇒ var 1`, the bound is 2. Its four rows give:
+
+| v 0 | v 1 | v 0 or v 1 | Does the implication hold? |
+|---|---|---|---|
+| false | false | false | true |
+| false | true | true | true |
+| true | false | true | false |
+| true | true | true | true |
+
+The third row makes the implication false, so the overall check returns false:
+
+```lean
+#eval taut? ((Form.var 0 ⋎ Form.var 1) ⇒ Form.var 1)  -- false
+```
+
+`taut? a : Bool` is a computation. `Tautology a : Prop` is the claim that a evaluates to
+true under **every** valuation, including functions that are not literally in our list.
+The question mark is part of this checker's name; it does not turn the function into a tactic.
+
+### 4.4 Why can these finitely many rows represent every valuation?
+
+Two valuations that agree at the atom indices occurring in a formula give it the same value.
+Values at unused indices cannot affect evaluation. For example, changing index 100 has no
+effect on a formula containing only indices 0 and 1.
+
+The generated rows cover every combination below `maxVar a`; fixing later indices at false
+therefore loses no relevant case. Sparse atom indices can add redundant columns, but do not
+omit any combination that matters.
+
+The final solver uses the certified theorem
+`taut?_eq_true_iff a : taut? a = true ↔ Tautology a`. Its proof connects these two facts:
+evaluation ignores irrelevant indices, and the finite table represents every relevant assignment.
+This justifies using the Boolean computation as evidence of the universal proposition.
+
+### 4.5 What does the truth table decide?
+
+Our evaluator takes a formula `a : Form` and a valuation `v : Nat → Bool`. The valuation
+supplies the truth values of the atoms; `eval` then computes how the connectives combine
+those values. For `a ⋎ ∼a`, there are only two possible values of `eval v a`:
+
+| `eval v a` | `eval v (∼a)` | `eval v (a ⋎ ∼a)` |
+|---|---|---|
+| `false` | `true` | `true` |
+| `true` | `false` | `true` |
+
+Both rows give true. This establishes that the **formula** `a ⋎ ∼a` is a tautology,
+whatever values the valuation assigns to its atoms. It does not tell us whether `a`
+itself is true: the table includes both possibilities.
+
+Now suppose we use `Form.var 0` to represent the mathematical claim “every natural number
+has property P”. Our evaluator sees only an atom with index 0. If `v 0 = true`, it returns
+true for that atom; if `v 0 = false`, it returns false. It never examines natural numbers
+or property P. Choosing `v 0 = true` is an input assignment, not a proof of the claim.
+
+In Lean, the actual claim would be a proposition such as `∀ n : Nat, P n`, for
+`P : Nat → Prop`. There is no general algorithm that decides every such proposition.
+Our finite truth-table checker does something more specific: it decides whether a formula
+built from our propositional constructors evaluates to true under every assignment of
+Boolean values to its atoms. It does not determine the truth of mathematical claims that
+we might use those atoms to represent.
+
+## 5. From formula trees to claims about their meaning
+
+### 5.1 Distinguish formulas, Boolean values, and propositions
 
 For the formula `Form.var 0 ⋎ Form.var 1`, consider a valuation assigning false to both atoms:
 
 ```lean
-#eval eval (fun _ => false) (Form.var 0 ⋎ Form.var 1)
+#eval eval (fun _ => false) (Form.var 0 ⋎ Form.var 1) -- false
 ```
 
 The output is false. The relevant types have different jobs:
@@ -144,9 +425,33 @@ One true row doesn't establish a tautology. One false row is enough to refute it
 that every row in a finite table is true establishes validity only once we have justified
 that the table covers all relevant assignments. The final solver will use that coverage proof.
 
+### 5.2 A transformation can come with a semantic guarantee
+
+A function returning `Form` builds a new formula tree. Its type alone does not say how the
+new formula's truth value relates to the original. We state that relation as a theorem.
+For example, implication can be written using negation and disjunction:
+
+```lean
+def expandImplication (a b : Form) : Form := ∼a ⋎ b
+
+example (v : Nat → Bool) (a b : Form) :
+    eval v (expandImplication a b) = eval v (a ⇒ b) := by
+  simp [expandImplication, Form.neg, eval]
+```
+
+On the left we evaluate the tree `∼a ⋎ b`; on the right we evaluate `a ⇒ b`. Both compute
+`(!eval v a) || eval v b`, so they agree under any valuation. The trees are different,
+but their meanings agree. This proof establishes that guarantee for arbitrary `a`, `b`, and `v`.
+
+Other transformations change truth values in a predictable way rather than preserving them.
+The final exercise explores one of these: Boolean duality. It also asks you to transform an
+entire formula recursively. As in the earlier lesson on expression trees, structural induction
+will give one case per constructor and hypotheses about the immediate subformulas.
+
 ## 6. Prove it
 
-Open `Skeleton.lean`. The supporting definitions are supplied; complete these declarations.
+Open `Skeleton.lean`. Complete three short proofs, then a formula transformation and its
+correctness proof. Evaluation and the other supporting definitions are supplied.
 The worked answers are after the hints.
 
 ```bash
@@ -168,6 +473,64 @@ theorem taut_excluded_middle (φ : Form) : Tautology (φ ⋎ ∼φ) := by
   sorry
 ```
 
+### Final exercise — build a dual formula and prove its evaluation law
+
+The **Boolean dual** exchanges conjunction and disjunction, and exchanges falsehood and
+truth. Atoms keep their names. Write $D(a)$ for the dual of $a$ in this description;
+your Lean function will be named `dual`.
+
+| Input | Required output |
+|---|---|
+| Atom `Form.var i` | The same atom `Form.var i` |
+| Falsehood `⊥` | Truth `Form.top` |
+| Conjunction $a \land b$ | $D(a) \lor D(b)$ |
+| Disjunction $a \lor b$ | $D(a) \land D(b)$ |
+| Implication $a \to b$ | $\neg D(a) \land D(b)$ |
+
+The implication rule follows the same idea: view $a \to b$ as $\neg a \lor b$, exchange
+“or” for “and”, and dualize the subformulas while retaining the negation.
+In Lean, use `∼`, `⋏`, and `⋎` for the formula connectives. `Form.top` is already defined as
+`∼(⊥)`. There is no separate negation constructor: the five rows above cover every constructor
+of `Form`.
+
+For example, the dual of `Form.var 0 ⋎ Form.var 1` is `Form.var 0 ⋏ Form.var 1`.
+If both atoms are true, both these formulas are true. **Duality does not simply negate a
+formula's value under the same valuation.** To express its evaluation law, we also reverse
+all the input values:
+
+```lean
+def flipValuation (v : Nat → Bool) : Nat → Bool := fun i => !(v i)
+
+#eval flipValuation (fun _ => true) 0  -- false
+#eval flipValuation (fun _ => false) 0 -- true
+```
+
+This function is given in the skeleton. `flipValuation v` is another valuation: wherever
+`v` returns true it returns false, and vice versa. In the example with both atoms true,
+the original disjunction becomes false under the flipped valuation; negating that result
+gives true, exactly the dual's value under the initial valuation.
+
+**Part A.** Implement `dual` with recursive pattern matching, following all five rules.
+Use the same equation style as `eval`: remove `:= sorry` and write the five equations,
+each beginning with `|`.
+
+```lean
+def dual : Form → Form :=
+  sorry
+```
+
+**Part B.** Prove the following for every formula, not just a few truth-table rows:
+
+```lean
+theorem eval_dual (v : Nat → Bool) (φ : Form) :
+    eval v (dual φ) = !eval (flipValuation v) φ := by
+  sorry
+```
+
+Read the equality in order: evaluate the **dual** under `v`; evaluate the **original** under
+`flipValuation v`, then negate that Boolean result. The `!` acts on a `Bool`, whereas `∼`
+builds a negated `Form`. You will need structural induction on `φ` to cover every formula.
+
 The required status determines whether the lab succeeds. Optional placeholders are reported
 separately in yellow when terminal colors are available; required success is green.
 
@@ -178,6 +541,18 @@ separately in yellow when terminal colors are available; required success is gre
 **`taut_imp_self`.** Introduce an arbitrary valuation. After unfolding, split on the Boolean value of the subformula.
 
 **`taut_excluded_middle`.** Introduce a valuation and unfold formula negation as well as evaluation. Consider the two Boolean values of the subformula.
+
+**`dual`.** Match on the five constructors, as in `eval`. For a binary constructor,
+recursively transform both children before combining the results. The implication case
+changes the outer connective too; copying an implication with transformed children does
+not implement the specified dual.
+
+**`eval_dual`.** Start with `induction φ with`. For an atom, unfold `flipValuation` and
+use Boolean double negation; for falsehood, both sides compute. Each binary case has two
+induction hypotheses. Unfold the outer evaluation, rewrite the evaluations of the dual
+children with those hypotheses, then inspect the two Boolean values
+`eval (flipValuation v) a` and `eval (flipValuation v) b`. This leaves four computational
+cases, like the Boolean proofs in the lesson.
 
 ## 8. Worked corrections to the required exercises
 
@@ -209,6 +584,74 @@ theorem taut_excluded_middle (φ : Form) : Tautology (φ ⋎ ∼φ) := by
 ```
 
 The proof again checks a Boolean value, after exposing the derived negation. It proves semantic validity of formula syntax, without deciding arbitrary Lean propositions.
+
+### `dual` and `eval_dual`
+
+The supplied `flipValuation` above is used by this solution:
+
+```lean
+def dual : Form → Form
+  | .var i => .var i
+  | .falsum => Form.top
+  | .imp a b => ∼(dual a) ⋏ dual b
+  | .and a b => dual a ⋎ dual b
+  | .or a b => dual a ⋏ dual b
+
+theorem eval_dual (v : Nat → Bool) (φ : Form) :
+    eval v (dual φ) = !eval (flipValuation v) φ := by
+  induction φ with
+  | var i => simp [dual, eval, flipValuation]
+  | falsum => rfl
+  | imp a b ihA ihB =>
+    simp only [dual, Form.neg, eval]
+    rw [ihA, ihB]
+    cases eval (flipValuation v) a <;> cases eval (flipValuation v) b <;> rfl
+  | and a b ihA ihB =>
+    simp only [dual, eval]
+    rw [ihA, ihB]
+    cases eval (flipValuation v) a <;> cases eval (flipValuation v) b <;> rfl
+  | or a b ihA ihB =>
+    simp only [dual, eval]
+    rw [ihA, ihB]
+    cases eval (flipValuation v) a <;> cases eval (flipValuation v) b <;> rfl
+```
+
+In `var`, the goal says that `v i` equals its double Boolean negation. In `falsum`,
+the dual is truth, while the right side is `!false`.
+
+Consider the `and` branch in more detail. The two induction hypotheses have types:
+
+```text
+ihA : eval v (dual a) = !eval (flipValuation v) a
+ihB : eval v (dual b) = !eval (flipValuation v) b
+```
+
+After unfolding and rewriting, the goal is a Boolean De Morgan law. If we abbreviate
+`eval (flipValuation v) a` by `x` and the corresponding value of `b` by `y`, it reads:
+
+```text
+(!x || !y) = !(x && y)
+```
+
+Splitting on `x` and `y` checks all four possibilities. The `or` branch uses the other
+De Morgan law; the implication branch checks the rule for implication in the same way.
+You can always split on `eval v a` with `cases`: its result is a `Bool`, so the two
+branches cover every possible value. However, splitting on one evaluation does not by
+itself establish its relation to another evaluation. Here we need to relate
+`eval v (dual a)` to `eval (flipValuation v) a`. Knowing that the second is false does
+not yet tell Lean that the first is true.
+
+That connection comes from `ihA`: it says the first evaluation is the Boolean negation
+of the second. The proof therefore has two steps with different roles:
+
+1. `rw [ihA, ihB]` replaces the evaluations of the dual children using the relations
+   supplied by the induction hypotheses.
+2. The two `cases` commands inspect the remaining Boolean values. The resulting four
+   branches compute with `rfl`.
+
+These case splits concern arbitrary subformulas `a` and `b`, so they cover both possible
+values regardless of the subformulas' shapes. This is different from running `#eval` on
+a few particular formula trees, which would check only those examples.
 
 ## 9. Optional practice
 
@@ -263,6 +706,10 @@ After introducing v, evaluation leaves `(!(eval v a && eval v b) || eval v a) = 
 A valuation supplies Boolean inputs, `eval` combines them, and `Tautology` quantifies over
 all valuations. A formula has finitely many relevant indices even though valuations are functions
 on every index. The finite table is executable; its certified equivalence will support the solver.
+The duality exercise adds a different use of semantics: specify how a transformation changes
+a formula's meaning, then prove that specification for every input tree. Structural recursion
+builds the transformation; structural induction proves its evaluation law.
+
 Next we define derivations, keeping semantic truth separate from proof construction.
 
 ## 12. Going further

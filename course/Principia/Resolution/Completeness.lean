@@ -17,7 +17,11 @@ Resolution **soundness** (2.4) makes the prover's *yes* meaningful, and this mod
 that *every* unsatisfiable set has a refutation — is research-grade with our `List`-based clauses (it
 needs set-like clause handling — permutation/subsumption — plus a restriction-and-lifting or
 semantic-tree induction over the variables). We treat it as the marked stretch (cf. FOL completeness);
-see the lesson's study and `references/` (FFL-Foundation) for a full account. Note Course 1's natural-
+see the lesson's study and `references/` (FFL-Foundation) for a full account. The separate first-order calculus now has a general completeness theorem in
+`Principia.FirstOrder.ResolutionCompleteness`, with explicit structural weakening and tautology
+rules. This does not prove completeness of this older saturation implementation.
+
+Note Course 1's natural-
 deduction prover *does* have full completeness (`provable_iff_tautology`), so the project's
 proof-and-validity coincidence is established there.
 -/

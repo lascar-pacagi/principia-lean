@@ -156,3 +156,8 @@ refutation-completeness is the marked stretch, studied above.
   *are* resolvents; DRAT/LRAT UNSAT certificates *are* resolution proofs). There the keystone — a verified
   **LRAT certificate checker** (`check proof cnf → cnf.Unsat`) — is fully achievable, and is the
   real-world version of the trustworthy-UNSAT pipeline this course is built around.
+
+
+The later [lesson 2.9](../09-first-order-completeness/explainer.qmd) now proves general
+first-order resolution completeness for the explicit calculus with structural weakening and
+tautologies. It separates that existence theorem from eventual success of a particular search.

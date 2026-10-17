@@ -1,0 +1,296 @@
+---
+title: "2.7 — First-order resolution, freshening, and factoring"
+---
+
+> **Where you are.** We now extend resolution to clauses containing terms and variables.
+> Unification matches pivots; freshening keeps the two parents' variables independent;
+> factoring handles repeated unifiable literals. Every generated clause stores its derivation.
+
+## 1. The question: how do clauses express first-order rules?
+
+“Every bird is an animal” can be written as the universally quantified clause
+¬Bird(x) ∨ Animal(x). Together with Bird(c) and ¬Animal(c), these clauses are inconsistent.
+Resolution specializes the rule at c, derives Animal(c), then resolves it against its negation.
+
+This interface accepts **first-order clauses**, whose variables are implicitly universally
+quantified. Arbitrary formulas with existential quantifiers need a sound clausification and
+Skolemization step before this interface; lesson 2.8 now implements that frontend.
+It isn't correct simply to drop existential binders or treat their witnesses as arbitrary constants.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+
+def positive (p : Nat) (t : Term) : Literal := ⟨true, ⟨p, [t]⟩⟩
+
+def negative (p : Nat) (t : Term) : Literal := ⟨false, ⟨p, [t]⟩⟩
+```
+
+
+`positive p t` and `negative p t` are the supplied literal constructors for unary predicates.
+
+## 2. Read the clause and certificate types
+
+`Atom` stores a predicate-symbol name and term arguments. `Literal` adds a Boolean sign.
+A `Clause` is a list of literals interpreted as their disjunction, and `ClauseSet` is a list
+of clauses interpreted conjunctively, with universal closure of each clause's variables.
+
+This lesson uses four constructors of `ResolutionDerivation S c`:
+
+| Constructor | Evidence stored |
+|---|---|
+| `input` | The clause occurs in the input set S. |
+| `substitution` | A parent derivation and a substitution applied to its entire clause. |
+| `resolution` | Two parent derivations and the complementary pivot to erase. |
+| `contraction` | A parent derivation whose duplicate literals are removed. |
+
+The library also includes structural `weakening` and `tautology`, explained in lesson 2.9
+and used in the general completeness proof. All six constructors have checked soundness.
+
+Its empty-clause instance is a refutation. The theorem `refutation_unsatisfiable` proves
+that such a value rules out every model of S. It doesn't depend on trusting the search
+heuristic or the unifier's candidate generation.
+
+## 3. Why variables must be renamed apart
+
+Consider two unit clauses P(x) and ¬P(f(x)). Their written x names are local to different
+universal clauses. Before unification, rename the second to ¬P(f(y)). Now x ↦ f(y) unifies
+the pivots. If we incorrectly shared x between both parents, we would test x = f(x) and
+reject the match by the occurs check.
+
+`freshenEntry` applies a variable renaming to the entire second parent and records this as
+a substitution step in its certificate. The offset is chosen above the first parent's
+variable bound, so the variable names are disjoint.
+
+```lean
+#eval (refuteFirstOrder 1 20
+  [[positive 2 (.variable 0)],
+   [negative 2 (.function 3 [.variable 0])]]).isSome
+```
+
+This succeeds after freshening and one resolution round. It is a case the naive shared-variable
+attempt would miss. Freshening changes variable names, not the set of interpretations that
+satisfy the universally quantified clause.
+
+## 4. Factoring is another inference step
+
+In P(x) ∨ P(y), the two positive literals can be unified with x ↦ y. Apply that substitution
+to the whole clause, obtaining P(y) ∨ P(y), then remove the duplicate to get P(y). This is
+**factoring**. It isn't binary resolution: no complementary negative literal is involved.
+
+The search tries same-sign literal pairs for factoring and opposite-sign pairs for resolution.
+Each accepted unifier is checked. Every substitution, contraction, and binary step contributes
+to the typed certificate. Merely deleting two different literals without first making them
+identical would be an invalid operation.
+
+## 5. Run a search and interpret its result
+
+```lean
+def birdClauses : ClauseSet :=
+  [[negative 0 (.variable 0), positive 1 (.variable 0)],
+   [positive 0 (.function 2 [])], [negative 1 (.function 2 [])]]
+#eval (refuteFirstOrder 2 20 birdClauses).isSome
+```
+
+The first number is the saturation-round bound; the second bounds each unification attempt.
+The output is true, and the stored value is a refutation of the input clauses. The library
+proves `refuteFirstOrder_sound`: success implies semantic unsatisfiability.
+
+`resolutionStage n S` increases both bounds. Repeating stages is a search process, not a
+terminating yes/no solver for arbitrary first-order inputs. A `none` result means unknown;
+it supplies neither a satisfying model nor a proof that no refutation exists.
+
+The kernel checks soundness for all certificate constructors. Lesson 2.9 now proves general
+first-order refutation completeness for this calculus via all substitution instances and a
+canonical term model. That proof does not assume completeness of the bounded unifier or
+saturation implementation. This lesson's exercises focus on constructing actual certificates.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=02-resolution/07-first-order-resolution
+```
+
+**Refute two unit clauses.** The first clause asserts P(x) for every x; the second asserts ¬P(t). Build a derivation of the empty clause for arbitrary predicate p and term t.
+
+```lean
+def resolve_universal_unit (p : Nat) (t : Term) :
+    ResolutionDerivation [[positive p (.variable 0)], [negative p t]] [] := by
+  sorry
+```
+
+**Use a successful stage.** Connect its returned certificate to semantic unsatisfiability of the input clauses.
+
+```lean
+theorem resolution_stage_sound {S : ClauseSet} {stage : Nat}
+    (h : (resolutionStage stage S).isSome = true) : Unsatisfiable S := by
+  sorry
+```
+
+**Interpret the empty clause.** Its disjunction has no literal that could provide a truth witness, regardless of model or environment.
+
+```lean
+theorem empty_clause_has_no_model {D : Type} (M : Model D) (ρ : Nat → D) :
+    ¬Clause.evaluate M ρ [] := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `resolve_universal_unit`
+
+**First hint.** Instantiate the positive unit at t; keep the negative unit unchanged.
+
+**Next hint.** Resolve the two complementary instances. Expand the literal and resolvent definitions to identify the empty result.
+
+### `resolution_stage_sound`
+
+**First hint.** A stage is a bounded refutation call with two matching budgets.
+
+**Next hint.** Reuse the verified soundness theorem for that call.
+
+### `empty_clause_has_no_model`
+
+**First hint.** Clause truth asks for a true member literal.
+
+**Next hint.** An empty list has no member; eliminate its hypothetical membership evidence.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `resolve_universal_unit`
+
+```lean
+def resolve_universal_unit (p : Nat) (t : Term) :
+    ResolutionDerivation [[positive p (.variable 0)], [negative p t]] [] := by
+  have first : ResolutionDerivation [[positive p (.variable 0)], [negative p t]]
+      [positive p (.variable 0)] := .input (by simp)
+  have instanceProof := ResolutionDerivation.substitution (extend t Term.variable) first
+  have he : Clause.substitute (extend t Term.variable) [positive p (.variable 0)] =
+      [positive p t] := by
+    simp [Clause.substitute, Literal.substitute, Atom.substitute, positive,
+      Term.substitute, extend]
+  have instantiated : ResolutionDerivation [[positive p (.variable 0)], [negative p t]]
+      [positive p t] := he ▸ instanceProof
+  have second : ResolutionDerivation [[positive p (.variable 0)], [negative p t]]
+      [negative p t] := .input (by simp)
+  simpa [resolvent, positive, negative, Literal.complement] using
+    (ResolutionDerivation.resolution (positive p t) instantiated second)
+```
+
+The positive input is universally quantified as a clause, so substituting t for its variable is sound. The equation he identifies the substituted clause with [P(t)]. The negative input already contains its complement. Resolution erases both unit literals and concatenates the two empty remainders.
+
+### `resolution_stage_sound`
+
+```lean
+theorem resolution_stage_sound {S : ClauseSet} {stage : Nat}
+    (h : (resolutionStage stage S).isSome = true) : Unsatisfiable S := by
+  exact refuteFirstOrder_sound h
+```
+
+The stage definition supplies its number as both budgets. A present refutation is exactly the evidence consumed by refuteFirstOrder_sound. Budget choice can affect success, but cannot make an accepted refutation unsound.
+
+### `empty_clause_has_no_model`
+
+```lean
+theorem empty_clause_has_no_model {D : Type} (M : Model D) (ρ : Nat → D) :
+    ¬Clause.evaluate M ρ [] := by
+  intro ⟨l, hl, ht⟩
+  cases hl
+```
+
+Unpacking clause truth would produce a literal l with hl : l ∈ []. The membership type has no constructor for an empty list, so cases hl closes the impossible branch.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Factor structured literals.** The two literals contain function applications. Unify their variable arguments before removing the duplicate literal.
+
+```lean
+def factor_two_variables (p : Nat) :
+    ResolutionDerivation [[positive p (.function 2 [.variable 0]),
+        positive p (.function 2 [.variable 1])]]
+      [positive p (.function 2 [.variable 1])] := by
+  sorry
+```
+
+*Hint:* Substitute variable one for zero in the whole clause, then contract the repeated literal.
+
+**Inspect a renamed clause.** Show what offset one does to the variable of this unit input clause.
+
+```lean
+theorem freshening_renames_variable (p : Nat) :
+    (freshenEntry 1 (S := [[positive p (.variable 0)]])
+      ⟨[positive p (.variable 0)], .input (by simp)⟩).1 = [positive p (.variable 1)] := by
+  sorry
+```
+
+*Hint:* Expand freshening and clause substitution. The original zero index receives the offset one.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `factor_two_variables`
+
+```lean
+def factor_two_variables (p : Nat) :
+    ResolutionDerivation [[positive p (.function 2 [.variable 0]),
+        positive p (.function 2 [.variable 1])]]
+      [positive p (.function 2 [.variable 1])] := by
+  have initial : ResolutionDerivation [[positive p (.function 2 [.variable 0]),
+        positive p (.function 2 [.variable 1])]]
+      [positive p (.function 2 [.variable 0]),
+        positive p (.function 2 [.variable 1])] := .input (by simp)
+  let σ := fun i => if i = 0 then Term.variable 1 else Term.variable i
+  have instanceProof := ResolutionDerivation.substitution σ initial
+  have he : Clause.substitute σ [positive p (.function 2 [.variable 0]),
+        positive p (.function 2 [.variable 1])] =
+      [positive p (.function 2 [.variable 1]), positive p (.function 2 [.variable 1])] := by
+    simp [Clause.substitute, Literal.substitute, Atom.substitute, positive, σ, Term.substitute]
+  have doubled := he ▸ instanceProof
+  simpa [List.eraseDups_cons] using ResolutionDerivation.contraction doubled
+```
+
+The substitution changes both function arguments to variable one. The two positive literals are then identical, including their outer function symbol. Contraction removes the duplicate; the final simplification uses the list theorem for eraseDups. No complementary pivot or second parent is needed.
+
+### `freshening_renames_variable`
+
+```lean
+theorem freshening_renames_variable (p : Nat) :
+    (freshenEntry 1 (S := [[positive p (.variable 0)]])
+      ⟨[positive p (.variable 0)], .input (by simp)⟩).1 = [positive p (.variable 1)] := by
+  simp [freshenEntry, Clause.substitute, Literal.substitute, Atom.substitute,
+    positive, Term.substitute]
+```
+
+The entry contains both a clause and its derivation. Freshening maps zero to zero plus the offset and records the renaming as a substitution node. The projected clause therefore contains variable one, while its certificate still refers to the original input set.
+
+## 11. Conclusion
+
+First-order resolution combines substitution, variable freshening, complementary pivots,
+and factoring. Every generated clause has a certificate whose soundness is proved for all
+models. The interface consumes universally quantified clauses and searches by finite stages.
+A refutation certifies unsatisfiability; failure of a stage certifies nothing. General
+clausification is implemented in 2.8 and general calculus completeness is proved in 2.9.
+The full conversion is verified by model expansion and recovery. Eventual success of the
+specific bounded searches remains a separate theorem.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 2.8 — Automatic clausification and Skolem functions.
+- **Then:** 2.9 — General first-order resolution completeness.

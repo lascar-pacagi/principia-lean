@@ -1,0 +1,274 @@
+---
+title: "2.6 — First-order substitution and checked unification"
+---
+
+> **Where you are.** First-order resolution must match predicates containing terms. We
+> begin with substitution and unification, before combining clauses. Every proposed unifier
+> is checked against the original equations and carries evidence that the check succeeded.
+
+## 1. The question: when do two atoms match?
+
+Propositional resolution matches the same atom name with opposite signs. In first-order
+clauses, P(x) and P(f(c)) can match after substituting f(c) for x. But P(x) and Q(x) cannot
+be matched merely by changing variables: predicate names aren't substitution variables.
+
+A unifier is a substitution making the two input expressions syntactically equal. It doesn't
+claim that unrelated functions denote different objects in every model; it solves a syntax
+matching problem needed by this proof rule.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+
+## 2. Finite substitutions and composition
+
+`Substitution` stores a finite list of variable/term bindings. Variables absent from that
+list map to themselves. Applying a substitution traverses the whole term.
+
+```lean
+def exampleBindings : Substitution := ⟨[(0, .function 3 [])]⟩
+#eval exampleBindings.apply (.function 2 [.variable 0, .variable 1])
+```
+
+The result is f(c, y): only variable zero is replaced. Composition must update earlier
+right-hand sides. If we first record x ↦ y, then learn y ↦ c, the accumulated substitution
+must send x to c too. `Substitution.bind` performs that update before adding the new binding.
+
+## 3. Unification as equation processing
+
+The supplied algorithm works on a list of equations between terms:
+
+- Equal terms need no further work.
+- For a variable x and term t, bind x to t if x doesn't occur inside t.
+- For matching function symbols and arities, replace their equation with equations between
+  corresponding arguments.
+- Different symbols or arities cannot unify.
+
+The **occurs check** rejects x = f(x). No finite first-order term can solve that equation;
+accepting it would introduce a cyclic object outside our term language.
+
+```lean
+#eval (unify? 20 [(Term.function 2 [.variable 0],
+  Term.function 2 [.function 3 []])]).isSome
+#eval (unify? 20 [(Term.variable 0, Term.function 2 [.variable 0])]).isSome
+```
+
+The outputs are true and false. The first step decomposes the common outer function,
+then binds x to c. The second triggers the occurs check.
+
+The numeric budget bounds one unification attempt. A returned `none` can also mean that
+budget was exhausted. A general most-general-unifier completeness theorem isn't claimed
+for this bounded interface. Resolution stages increase this budget as well as their round count.
+
+## 4. Turn a computed check into evidence
+
+A proposal isn't accepted merely because the algorithm returned it. The wrapper checks
+every original equation using the proposed substitution. The result type records this:
+
+```text
+CheckedUnifier equations:
+  substitution : Substitution
+  solves : ∀ pair ∈ equations,
+    substitution.apply pair.1 = substitution.apply pair.2
+```
+
+The field `solves` is a Lean proof, not an unchecked annotation. Two helpers connect the
+finite Boolean check to that field:
+
+```text
+List.all_eq_true : xs.all f = true ↔ ∀ x ∈ xs, f x = true
+of_decide_eq_true : decide P = true → P
+```
+
+For a simpler example of the second conversion:
+
+```lean
+example (a b : Nat) (h : decide (a = b) = true) : a = b := by
+  exact of_decide_eq_true h
+```
+
+`decide (a = b)` is a Boolean calculation. A proof that its result is true can be converted
+into evidence of the original proposition. For a list, `List.all_eq_true.mp` specializes
+an all-true check to one member:
+
+```lean
+example (a b : Bool) (h : [a, b].all id = true) : a = true := by
+  exact List.all_eq_true.mp h a (by simp)
+```
+
+In the checker exercise, each member is an equation pair, and the Boolean predicate decides
+whether applying the candidate substitution makes its two sides equal.
+
+## 5. Dependent conditionals and local proof blocks
+
+Writing `if h : check = true then ... else ...` gives evidence of the condition in the
+positive branch and its negation in the negative branch. The positive branch can construct
+`CheckedUnifier` by providing its substitution field and a local `by` proof of `solves`.
+Inside that local proof, introducing a pair and membership evidence lets you use the list
+helper above. Dedenting returns to the candidate-building expression.
+
+For a smaller example, keep a number only if it is zero, together with evidence of that fact:
+
+```lean
+def keepZero (n : Nat) : Option {k : Nat // k = 0} :=
+  if h : n = 0 then
+    some ⟨n, by
+      exact h⟩
+  else none
+```
+
+`{k : Nat // k = 0}` pairs a number with a proof about it. In the successful branch,
+`h : n = 0` comes from the named conditional. The pair supplies n and a `by` block whose
+goal is n = 0. The branch closes it with h. The outer `def` is an ordinary expression;
+only the proof field enters tactic mode. The candidate checker will use the same structure
+with a more substantial condition and proof field.
+
+
+The trusted guarantee is that every accepted result solves the original equations. The
+procedure that proposes candidates may fail to find one within its budget; such failure
+isn't a proof that no unifier exists. The explicit occurs, symbol and arity checks still
+reject the corresponding impossible matches in our tests.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=02-resolution/06-unification
+```
+
+**Check a proposed substitution.** Return a certified result exactly when applying σ solves every original equation. Construct the required proof field from the finite check.
+
+```lean
+def certifyCandidate (σ : Substitution) (equations : List (Term × Term)) :
+    Option (CheckedUnifier equations) :=
+  sorry
+```
+
+**Use your checker specification.** If your wrapper succeeds, prove that σ solves each original equation; do not assume anything about how σ was proposed.
+
+```lean
+theorem accepted_candidate_solves (σ : Substitution) (equations : List (Term × Term))
+    (h : (certifyCandidate σ equations).isSome = true) :
+    ∀ pair ∈ equations, σ.apply pair.1 = σ.apply pair.2 := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `certifyCandidate`
+
+**First hint.** Use a named conditional for the all-equations check.
+
+**Next hint.** On success, build the two fields of CheckedUnifier; use the list and decision-conversion helpers for the proof field.
+
+### `accepted_candidate_solves`
+
+**First hint.** Split on whether the finite check is true.
+
+**Next hint.** A true check proves any listed equation; a false check makes the claimed successful return impossible.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `certifyCandidate`
+
+```lean
+def certifyCandidate (σ : Substitution) (equations : List (Term × Term)) :
+    Option (CheckedUnifier equations) :=
+  if h : equations.all (fun pair => decide (σ.apply pair.1 = σ.apply pair.2)) = true then
+    some ⟨σ, by
+      intro pair hp
+      exact of_decide_eq_true (List.all_eq_true.mp h pair hp)⟩
+  else none
+```
+
+The conditional records the all-true check as h. The local proof introduces one original equation pair and its membership. `List.all_eq_true.mp` gives a successful equality decision for that pair; `of_decide_eq_true` converts it into the required equality proof. In the negative branch no certified candidate is returned.
+
+### `accepted_candidate_solves`
+
+```lean
+theorem accepted_candidate_solves (σ : Substitution) (equations : List (Term × Term))
+    (h : (certifyCandidate σ equations).isSome = true) :
+    ∀ pair ∈ equations, σ.apply pair.1 = σ.apply pair.2 := by
+  intro pair hp
+  by_cases hc : equations.all (fun p => decide (σ.apply p.1 = σ.apply p.2)) = true
+  · exact of_decide_eq_true (List.all_eq_true.mp hc pair hp)
+  · simp [certifyCandidate, hc] at h
+```
+
+The result follows from the checked condition, not an assumption that the proposal algorithm is correct. In the negative-check branch, simplifying certifyCandidate rewrites success to false = true. In the positive branch the list helper applies to each requested equation.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Find a nested occurrence.** Check for variable zero below a function argument, past an unrelated constant argument.
+
+```lean
+theorem occurs_in_own_application :
+    (Term.function 1 [.function 2 [], .function 3 [.variable 0]]).occurs 0 = true := by
+  sorry
+```
+
+*Hint:* Unfold the occurs check on the function and then its argument variable.
+
+**Compose inside a function argument.** An older binding contains another variable inside a function; adding a binding for that variable must update the earlier term.
+
+```lean
+theorem binding_updates_earlier_rhs :
+    (Substitution.bind ⟨[(0, .function 3 [.variable 1])]⟩
+      1 (.function 2 [])).apply (.variable 0) = .function 3 [.function 2 []] := by
+  sorry
+```
+
+*Hint:* Follow the older binding through the new single-variable substitution before looking up variable zero.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `occurs_in_own_application`
+
+```lean
+theorem occurs_in_own_application :
+    (Term.function 1 [.function 2 [], .function 3 [.variable 0]]).occurs 0 = true := by
+  simp [Term.occurs]
+```
+
+The first argument contains no variable, but the second contains variable zero below another function node. The occurs check must traverse nested arguments to find it; checking only the outer constructor would miss this cycle.
+
+### `binding_updates_earlier_rhs`
+
+```lean
+theorem binding_updates_earlier_rhs :
+    (Substitution.bind ⟨[(0, .function 3 [.variable 1])]⟩
+      1 (.function 2 [])).apply (.variable 0) = .function 3 [.function 2 []] := by
+  simp [Substitution.bind, Substitution.apply, Substitution.lookup, Term.substitute]
+```
+
+The old substitution maps zero to a function of variable one. Binding one to constant two substitutes inside that earlier function argument, so the final lookup returns the function of the constant. Updating only direct variable-to-variable bindings would miss this case.
+
+## 11. Conclusion
+
+Unification proposes substitutions by decomposing equations and binding variables. The occurs
+check rejects cycles, and composition updates old bindings. The checked result carries proof
+that every original equation is solved. A finite-budget failure is unknown; a positive result
+provides the syntactic correspondence needed for first-order resolution.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 2.7 — First-order resolution, freshening, and factoring.

@@ -22,8 +22,8 @@ inductive Deriv : List Form → Form → Type where
   | orI₁  {Γ a b}   : Deriv Γ a → Deriv Γ (a ⋎ b)
   | orI₂  {Γ a b}   : Deriv Γ b → Deriv Γ (a ⋎ b)
   | orE   {Γ a b c} : Deriv Γ (a ⋎ b) → Deriv (a :: Γ) c → Deriv (b :: Γ) c → Deriv Γ c
-  | flsE  {Γ a}     : Deriv Γ Form.fls → Deriv Γ a
-  | raa   {Γ a}     : Deriv (Form.neg a :: Γ) Form.fls → Deriv Γ a
+  | flsE  {Γ a}     : Deriv Γ Form.falsum → Deriv Γ a
+  | raa   {Γ a}     : Deriv (Form.neg a :: Γ) Form.falsum → Deriv Γ a
 
 scoped notation:40 Γ " ⊢ " φ => Deriv Γ φ
 

@@ -1,0 +1,269 @@
+---
+title: "1.11 — Searching for first-order derivations"
+---
+
+> **Where you are.** The rules and their soundness theorem are in place. We now search for
+> first-order derivations. This differs fundamentally from the total propositional solver:
+> a failed finite attempt is unknown, and search depth is only one of the bounds to manage.
+
+## 1. The question: what must a quantified proof search choose?
+
+A universal hypothesis can be specialized at many terms. An existential goal needs a witness.
+Elimination can need an intermediate formula not visible at the outermost goal. With function
+symbols, candidate terms include c, f(c), f(f(c)), and so on without a finite upper bound.
+
+A finite run must restrict its choices. The core search takes a proof depth, a finite formula
+pool, and a finite term pool. Unlike the initial propositional search, it includes the logical introduction and elimination
+shapes, including contradiction. Structural weakening and the fresh-index variants used in
+the completeness construction are not separate search branches.
+It still can miss proofs when the selected bounds or pools are insufficient.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+
+def unary (p : Nat) (t : Term) : Formula := .predicate p [t]
+```
+
+
+## 2. Follow one quantified search
+
+Let the context contain ∀x (P(x) → Q(x)) and P(c). To obtain Q(c): specialize the universal
+rule at c, producing P(c) → Q(c), then apply implication elimination to P(c).
+
+```lean
+def objectConstant : Term := .function 2 []
+def ruleBody : Formula := .implies (unary 0 (.variable 0)) (unary 1 (.variable 0))
+def quantifiedRule : Formula := .universal ruleBody
+#eval (proveFirstOrder 2 [quantifiedRule, unary 0 objectConstant]
+  (unary 1 objectConstant)).isSome
+```
+
+The output is true. `proveFirstOrder` builds heuristic pools from the problem's subformulas,
+terms, and quantifier instances. A successful result contains the full derivation, not just
+that displayed tag. `d.nodeCount` can traverse a returned derivation to count its rule nodes.
+
+For explicit experiments, `searchDerivation formulas terms depth Γ goal` uses exactly the
+pools supplied. Its universal and existential branches use capture-avoiding instantiation;
+its introduction and existential-elimination branches shift contexts as the rules require.
+
+## 3. Why increasing only fuel isn't enough
+
+A proof might need a witness f(c) that isn't in a fixed term pool. Giving that pool more
+search depth doesn't add f(c). Similarly, a missing intermediate formula can block an
+elimination step. Finite failure therefore says neither invalidity nor absence of a derivation.
+
+The separate interface `derivationStage n Γ goal` enlarges symbol indices, term arities,
+term depth, formula depth, and proof depth. Each stage is a total function. Its growing
+finite pools are an exhaustive strategy rather than the heuristic pools of `proveFirstOrder`.
+The enumeration is deliberately simple and can become expensive very quickly; use the
+heuristic entry point for the small examples in this lesson.
+
+We distinguish this operational strategy from a **formal completeness theorem**. Lessons
+1.12–1.13 now prove general first-order semantic completeness via Henkin's construction:
+every semantic consequence has a finite derivation. The library does not yet prove that
+these particular search implementations eventually return that derivation. Neither property
+is assumed as an axiom.
+
+## 4. Read positive and negative results correctly
+
+```text
+some d : a derivation of exactly the requested conclusion and context was found
+none   : this finite attempt found no derivation
+```
+
+In the successful branch, `derivation_sound d` establishes entailment over every model.
+In the other branch there is no tree to use. No countermodel has been produced either.
+This is why our closed wrapper will return `Option (Derivation [] goal)`, not a Boolean
+whose false branch claims invalidity.
+
+A semantic countermodel does have a stronger consequence: soundness rules out all derivations
+of that conclusion from those assumptions, and thus rules out a successful search. The optional
+exercises connect that logical argument to the program's Boolean success observation.
+
+## 5. What termination means at this stage
+
+Every `searchDerivation` recursive call decreases proof fuel. The finite enumerators decrease
+their depth and list-length bounds. Therefore each individual stage terminates. Repeating
+larger stages is an unbounded search process: on an invalid formula it may continue forever.
+
+This is the right shape for a first-order proof search, not a total validity decider. The
+propositional solver from 1.7 remains a separate interface with a stronger terminating yes/no
+specification for its smaller language. The first-order soundness theorem is already proved;
+general semantic completeness is proved in the next two lessons.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=01-natural-deduction/11-first-order-search
+```
+
+**Search without assumptions.** Define a wrapper around the core search whose context is empty. Retain its term pool, formula pool, and depth arguments.
+
+```lean
+def closedSearch (fuel : Nat) (formulas : List Formula) (terms : List Term)
+    (goal : Formula) : Option (Derivation [] goal) :=
+  sorry
+```
+
+**Interpret a successful result.** Show that success of your closed wrapper establishes validity in every nonempty model.
+
+```lean
+theorem closedSearch_sound {fuel : Nat} {formulas : List Formula} {terms : List Term}
+    {goal : Formula} (h : (closedSearch fuel formulas terms goal).isSome = true) :
+    Formula.Valid goal := by
+  sorry
+```
+
+**Recover the existence of a tree.** A successful growing stage must imply that the requested derivation type is inhabited. This is an existence statement about syntax.
+
+```lean
+theorem stage_success_provides_derivation {stage : Nat} {Γ : List Formula} {goal : Formula}
+    (h : (derivationStage stage Γ goal).isSome = true) : Nonempty (Derivation Γ goal) := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `closedSearch`
+
+**First hint.** The core search takes pools, depth, context, and goal.
+
+**Next hint.** Fix the context to the empty list and preserve the remaining inputs.
+
+### `closedSearch_sound`
+
+**First hint.** Your wrapper is a call to the already verified search.
+
+**Next hint.** Use the search soundness theorem; validity is entailment from the empty context.
+
+### `stage_success_provides_derivation`
+
+**First hint.** Split on the optional result and keep its equation.
+
+**Next hint.** In the successful branch package d in Nonempty; the unsuccessful branch contradicts the hypothesis.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `closedSearch`
+
+```lean
+def closedSearch (fuel : Nat) (formulas : List Formula) (terms : List Term)
+    (goal : Formula) : Option (Derivation [] goal) :=
+  searchDerivation formulas terms fuel [] goal
+```
+
+The result type explicitly fixes the derivation context to []. The wrapper performs no extra search and makes no new negative-answer claim; it preserves the optional result of the verified core.
+
+### `closedSearch_sound`
+
+```lean
+theorem closedSearch_sound {fuel : Nat} {formulas : List Formula} {terms : List Term}
+    {goal : Formula} (h : (closedSearch fuel formulas terms goal).isSome = true) :
+    Formula.Valid goal := by
+  exact searchDerivation_sound h
+```
+
+Unfolding the wrapper exposes the exact success observation consumed by search soundness. The semantic conclusion is validity because the context is empty. No analysis of the search strategy is needed to justify a returned typed tree.
+
+### `stage_success_provides_derivation`
+
+```lean
+theorem stage_success_provides_derivation {stage : Nat} {Γ : List Formula} {goal : Formula}
+    (h : (derivationStage stage Γ goal).isSome = true) : Nonempty (Derivation Γ goal) := by
+  cases hs : derivationStage stage Γ goal with
+  | none => simp [hs] at h
+  | some d => exact ⟨d⟩
+```
+
+The named equation hs records which optional constructor occurred. In none, the success hypothesis simplifies to an impossible equality. In some d, d has the input goal and context in its type, so it directly witnesses Nonempty.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Rule out success using a countermodel.** A model satisfying Γ and refuting the goal contradicts any successful search, whatever its fuel.
+
+```lean
+theorem countermodel_prevents_success {D : Type} (inhabited : Nonempty D)
+    (M : Model D) (ρ : Nat → D) (Γ : List Formula) (goal : Formula) (fuel : Nat)
+    (hΓ : Satisfies M ρ Γ) (hnot : ¬goal.evaluate M ρ) :
+    (proveFirstOrder fuel Γ goal).isSome = false := by
+  sorry
+```
+
+*Hint:* A true success tag would imply entailment. Specialize it to the supplied countermodel and contradict hnot.
+
+**Separate a failed attempt from unprovability.** Show both that the zero-fuel call fails and that a derivation of this quantified identity exists.
+
+```lean
+theorem zero_fuel_misses_quantified_identity (p : Nat) :
+    (proveFirstOrder 0 [] (.universal (.implies (unary p (.variable 0))
+      (unary p (.variable 0))))).isSome = false ∧
+    Nonempty (Derivation [] (.universal (.implies (unary p (.variable 0))
+      (unary p (.variable 0))))) := by
+  sorry
+```
+
+*Hint:* The failed run computes. Build the small derivation independently to show that failure is only a search limit.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `countermodel_prevents_success`
+
+```lean
+theorem countermodel_prevents_success {D : Type} (inhabited : Nonempty D)
+    (M : Model D) (ρ : Nat → D) (Γ : List Formula) (goal : Formula) (fuel : Nat)
+    (hΓ : Satisfies M ρ Γ) (hnot : ¬goal.evaluate M ρ) :
+    (proveFirstOrder fuel Γ goal).isSome = false := by
+  cases hs : (proveFirstOrder fuel Γ goal).isSome with
+  | false => rfl
+  | true =>
+    have he := proveFirstOrder_sound hs D inhabited M ρ hΓ
+    exact False.elim (hnot he)
+```
+
+Split on the Boolean success tag. False is the requested answer. True would yield an entailment valid in the supplied domain and model; applying that entailment to hΓ contradicts hnot. This rules out every sound successful run, not merely this budget.
+
+### `zero_fuel_misses_quantified_identity`
+
+```lean
+theorem zero_fuel_misses_quantified_identity (p : Nat) :
+    (proveFirstOrder 0 [] (.universal (.implies (unary p (.variable 0))
+      (unary p (.variable 0))))).isSome = false ∧
+    Nonempty (Derivation [] (.universal (.implies (unary p (.variable 0))
+      (unary p (.variable 0))))) := by
+  constructor
+  · rfl
+  · exact ⟨.universalIntro (.implicationIntro (.assumption (by simp)))⟩
+```
+
+The first conjunct is a computation of the zero-fuel definition. The second contains a real tree built with universal introduction, implication introduction, and an assumption. Together they separate a failed attempt from absence of a proof.
+
+## 11. Conclusion
+
+We now have proof-producing first-order search using the logical introduction and elimination
+rules. Finite runs can fail because of depth, terms, or intermediate formulas, so none means
+unknown. Growing stages and heuristic pools serve different purposes. Soundness certifies every
+returned tree. The next two lessons prove general semantic completeness; eventual success of
+the particular search implementation remains a separate theorem.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 1.12 — Consistency, fresh witnesses, and Henkin extensions.

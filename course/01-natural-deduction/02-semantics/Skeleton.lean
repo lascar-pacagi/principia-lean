@@ -15,7 +15,7 @@ namespace Principia.Form
 /-- Truth value of a formula under a valuation `v`. GIVEN. -/
 def eval (v : Nat → Bool) : Form → Bool
   | .var n   => v n
-  | .fls     => false
+  | .falsum  => false
   | .imp a b => (!eval v a) || eval v b
   | .and a b => eval v a && eval v b
   | .or a b  => eval v a || eval v b
@@ -30,7 +30,7 @@ def Entails (Γ : List Form) (φ : Form) : Prop :=
 /-- A runnable truth-table checker (GIVEN; we `#eval` it below). -/
 def maxVar : Form → Nat
   | .var n   => n + 1
-  | .fls     => 0
+  | .falsum     => 0
   | .imp a b => max (maxVar a) (maxVar b)
   | .and a b => max (maxVar a) (maxVar b)
   | .or a b  => max (maxVar a) (maxVar b)
@@ -39,15 +39,56 @@ def allEnvs : Nat → List (Nat → Bool)
   | n + 1 => (allEnvs n).flatMap (fun v => [v, fun k => if k == n then true else v k])
 def taut? (φ : Form) : Bool := (allEnvs (maxVar φ)).all (fun v => eval v φ)
 
-/-! Your three facts. -/
+/-! Your first three facts. -/
 
 theorem eval_neg (v : Nat → Bool) (φ : Form) : eval v (∼φ) = !eval v φ := by
-  sorry
+  rw [neg, eval, eval]
+  simp
+
 
 theorem taut_imp_self (φ : Form) : Tautology (φ ⇒ φ) := by
-  sorry
+  rw [Tautology]
+  intro v
+  rw [eval]
+  simp
 
 theorem taut_excluded_middle (φ : Form) : Tautology (φ ⋎ ∼φ) := by
-  sorry
+  rw [Tautology]
+  intro v
+  rw [neg, eval, eval, eval]
+  simp
+
+/-! Final exercise: implement a transformation, then prove its meaning. -/
+
+/-- Reverse every atom's Boolean value. GIVEN. -/
+def flipValuation (v : Nat → Bool) : Nat → Bool := fun i => !(v i)
+
+/-- Build the Boolean dual. See §6 for all five transformation rules.
+Replace `:= sorry` with equations beginning with `|`, as in `eval` above. -/
+def dual : Form → Form
+  | .var i => .var i
+  | .falsum => Form.top
+  | .imp a b => .and (Form.neg (dual a)) (dual b)
+  | .and a b => .or (dual a) (dual b)
+  | .or a b => .and (dual a) (dual b)
+
+/-- Relate the transformed formula to the original under the flipped valuation. -/
+theorem eval_dual (v : Nat → Bool) (φ : Form) :
+    eval v (dual φ) = !eval (flipValuation v) φ := by
+  induction φ with
+  | var i => rw [dual, eval, eval, flipValuation]; simp
+  | falsum =>
+    rw [dual, top, neg, eval, eval]
+    simp
+  | imp a b iha ihb =>
+    rw [dual, neg, eval, eval, eval, iha, ihb, eval]
+    simp
+  | and a b iha ihb =>
+    rw [dual, eval, eval, iha, ihb]
+    simp
+  | or a b iha ihb =>
+    rw [dual, eval, eval, iha, ihb]
+    simp
+
 
 end Principia.Form

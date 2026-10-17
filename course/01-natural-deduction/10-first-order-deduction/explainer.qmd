@@ -1,0 +1,365 @@
+---
+title: "1.10 — First-order natural deduction and fresh variables"
+---
+
+> **Where you are.** We now extend proof trees with four quantifier rules. The indices in
+> their types enforce freshness. A soundness theorem connects every such derivation to the
+> arbitrary-domain semantics from lesson 1.9.
+
+## 1. The question: when may we generalize?
+
+From a rule about every object, we may specialize to a term. The reverse direction needs care:
+knowing P(c) about one chosen object doesn't show that P holds for every object. Likewise,
+an existential statement supplies a local witness; it doesn't identify that witness with a
+constant already present in the problem.
+
+The new type `Derivation Γ a` represents first-order derivations. Its propositional rules
+have descriptive names such as `implicationIntro` and `conjunctionLeft`. It is separate from
+the earlier propositional type `Deriv`.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+
+def unary (p : Nat) (t : Term) : Formula := .predicate p [t]
+```
+
+
+Here `unary p t` is the supplied shorthand for `Formula.predicate p [t]`.
+
+## 2. Use “for every” and build “there exists”
+
+The universal-elimination rule has this shape:
+
+```text
+Derivation Γ (universal body)
+─────────────────────────── universalElim t
+Derivation Γ (body.instantiate t)
+```
+
+A specialization supplies a term t. It doesn't need a proof that every object equals t.
+For example:
+
+```lean
+def useUniversal (Γ : List Formula) (body : Formula) (t : Term)
+    (d : Derivation Γ (.universal body)) : Derivation Γ (body.instantiate t) := by
+  exact Derivation.universalElim t d
+```
+
+Existential introduction goes the other way: a derivation of the instance for a chosen term
+builds a derivation of the existential claim:
+
+```lean
+def exhibitWitness (Γ : List Formula) (body : Formula) (t : Term)
+    (d : Derivation Γ (body.instantiate t)) : Derivation Γ (.existential body) := by
+  exact Derivation.existentialIntro t d
+```
+
+The term is syntax; the premise must actually prove its instance. Merely naming a term
+provides no evidence that it satisfies the predicate.
+
+## 3. Build “for every” using a fresh variable
+
+Universal introduction adds a fresh variable at index zero. Every old assumption is shifted
+so it continues to refer to its original variables:
+
+```text
+Derivation (Γ.map Formula.shift) body
+────────────────────────────────── universalIntro
+Derivation Γ (universal body)
+```
+
+For example, we can prove ∀x (P(x) → (P(x) ∨ Q(x))):
+
+```lean
+def universallyInjectLeft (p q : Nat) :
+    Derivation [] (.universal (.implies (unary p (.variable 0))
+      (.disjunction (unary p (.variable 0)) (unary q (.variable 0))))) := by
+  apply Derivation.universalIntro
+  apply Derivation.implicationIntro
+  apply Derivation.disjunctionLeft
+  exact Derivation.assumption (by simp)
+```
+
+After `universalIntro`, the goal is the body under a fresh index zero and an empty shifted
+context. After `implicationIntro`, the context contains P at that arbitrary index. Its
+assumption leaf can build the disjunction's left side. Because the index was fresh, the
+argument works for any object.
+
+If the original context had contained P of a free variable zero, shifting it would produce
+P of variable one. It couldn't be reused as P of the new variable zero. That is how the rule
+blocks the invalid generalization P(x) / ∀x P(x).
+
+## 4. Use an existential witness locally
+
+Existential elimination takes two premise derivations:
+
+```text
+Derivation Γ (existential body)
+Derivation (body :: Γ.map Formula.shift) conclusion.shift
+──────────────────────────────────────────────────────── existentialElim
+Derivation Γ conclusion
+```
+
+The branch assumes body for a fresh witness at index zero. Both the old context and the
+requested conclusion are shifted. Consequently, the conclusion cannot depend on the fresh
+witness escaping its branch. For example, from ∃x P(x), we can derive ∃x (P(x) ∨ Q(x)); we
+cannot conclude P(c) for an arbitrarily chosen constant c.
+
+To plan a branch, write its context and target before choosing tactics. An `apply` of this
+constructor opens one goal for the existential premise and another for the local branch.
+The exercises include a new existential transformation so you can practice this structure.
+
+Here is the complete example ∃x P(x) / ∃x (P(x) ∨ Q(x)). First use the existential
+premise, then build the new existential inside its local branch:
+
+```lean
+def widenExistential (p q : Nat) :
+    Derivation [.existential (unary p (.variable 0))]
+      (.existential (.disjunction (unary p (.variable 0))
+        (unary q (.variable 0)))) := by
+  apply Derivation.existentialElim (body := unary p (.variable 0))
+  · exact Derivation.assumption (by simp)
+  · have closedGoal :
+        (Formula.existential (.disjunction (unary p (.variable 0))
+          (unary q (.variable 0)))).shift =
+        .existential (.disjunction (unary p (.variable 0))
+          (unary q (.variable 0))) := by
+      simp [unary, Formula.shift, Formula.rename, Formula.substitute,
+        liftSubstitution, Term.substitute]
+    rw [closedGoal]
+    apply Derivation.existentialIntro (.variable 0)
+    simpa [unary, Formula.instantiate, Formula.substitute, Term.substitute, extend]
+      using Derivation.disjunctionLeft
+        (b := unary q (.variable 0))
+        (Derivation.assumption (Γ := unary p (.variable 0) ::
+          [Formula.existential (unary p (.variable 0))].map Formula.shift)
+          (a := unary p (.variable 0)) (by simp))
+```
+
+The first bullet proves the existential premise by looking it up in the original context.
+The second bullet has this shape, writing P(0) for the predicate at variable zero:
+
+```text
+Context: P(0) :: [∃x P(x)].map Formula.shift
+Target:  (∃x (P(x) ∨ Q(x))).shift
+```
+
+`closedGoal` says that shifting this particular conclusion changes nothing: it has no free
+variables. The `rw` makes that fact visible in the target. Existential introduction chooses
+the local variable zero as witness. The final tree builds the left side of the disjunction
+using P(0), the first assumption in this branch.
+
+The last `simpa` expands instantiation so Lean can identify its result with the formula we
+just built. The explicit `Γ := ...` supplies the context of the assumption leaf; `a := ...`
+supplies its formula. These annotations guide Lean's type inference. The witness remains
+local throughout: the final conclusion is an existential, and never names that variable.
+
+
+## 5. Semantic correctness and the two levels of classical logic
+
+The library theorem is:
+
+```text
+derivation_sound (d : Derivation Γ a) : Formula.Entails Γ a
+```
+
+Its proof follows the derivation tree. Universal elimination uses the instantiation theorem;
+universal introduction extends the environment by an arbitrary object and shifts context
+satisfaction. Existential introduction supplies an interpreted term as witness. Existential
+elimination uses the semantic witness only inside the branch, then translates the shifted
+conclusion back to the old environment.
+
+The constructor `contradiction` is our object system's classical rule. Its semantic soundness
+uses Lean's classical principle for arbitrary propositions. A tree records this rule even
+if constructing the tree itself needs no Lean classical axiom. Keep the rules in the tree
+separate from the axioms used to prove facts about trees.
+
+For the general completeness construction in 1.12, the library also makes structural
+weakening and fresh-index versions of the two eigenvariable rules explicit. Their freshness
+conditions and soundness proofs are checked; you do not need them for this lesson’s exercises.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=01-natural-deduction/10-first-order-deduction
+```
+
+**From every object to a witness.** Build an object-system proof of ∀x P(x) ⊢ ∃x P(x), using the supplied term t.
+
+```lean
+def universal_to_existential (p : Nat) (t : Term) :
+    Derivation [.universal (unary p (.variable 0))]
+      (.existential (unary p (.variable 0))) := by
+  sorry
+```
+
+**A quantified identity.** Build a closed object-system proof of ∀x (P(x) → P(x)). This asks for a derivation tree, rather than a proof about its interpretation in one model.
+
+```lean
+def universal_identity (p : Nat) :
+    Derivation [] (.universal
+      (.implies (unary p (.variable 0)) (unary p (.variable 0)))) := by
+  sorry
+```
+
+**Keep one part of a witnessed conjunction.** From ∃x (P(x) ∧ Q(x)), derive ∃x P(x). The witness may be used only inside the elimination branch.
+
+```lean
+def existential_conjunction_left (p q : Nat) :
+    Derivation [.existential (.conjunction (unary p (.variable 0)) (unary q (.variable 0)))]
+      (.existential (unary p (.variable 0))) := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `universal_to_existential`
+
+**First hint.** Choose t as the existential witness.
+
+**Next hint.** The remaining instance is exactly the result of specializing the universal assumption at t.
+
+### `universal_identity`
+
+**First hint.** Start with the universal-introduction rule, not Lean intro.
+
+**Next hint.** Introduce the implication in the object system, then use the assumption leaf.
+
+### `existential_conjunction_left`
+
+**First hint.** Eliminate the existential input and work under its fresh witness.
+
+**Next hint.** Project the first conjunct in that branch; use the fresh variable as witness of the target existential.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `universal_to_existential`
+
+```lean
+def universal_to_existential (p : Nat) (t : Term) :
+    Derivation [.universal (unary p (.variable 0))]
+      (.existential (unary p (.variable 0))) := by
+  apply Derivation.existentialIntro t
+  exact Derivation.universalElim t (.assumption (by simp))
+```
+
+The existential-introduction node records t as witness. Its premise is the same instance produced by universal elimination at t. The assumption leaf supplies the original universally quantified formula.
+
+### `universal_identity`
+
+```lean
+def universal_identity (p : Nat) :
+    Derivation [] (.universal
+      (.implies (unary p (.variable 0)) (unary p (.variable 0)))) := by
+  apply Derivation.universalIntro
+  apply Derivation.implicationIntro
+  exact Derivation.assumption (by simp)
+```
+
+Universal introduction creates a fresh variable and an empty shifted context. Implication introduction then adds the predicate at that fresh variable, and the assumption leaf returns it. The tree works for arbitrary predicate-symbol p.
+
+### `existential_conjunction_left`
+
+```lean
+def existential_conjunction_left (p q : Nat) :
+    Derivation [.existential (.conjunction (unary p (.variable 0)) (unary q (.variable 0)))]
+      (.existential (unary p (.variable 0))) := by
+  apply Derivation.existentialElim
+    (body := .conjunction (unary p (.variable 0)) (unary q (.variable 0)))
+  · exact Derivation.assumption (by simp)
+  · have he : (Formula.existential (unary p (.variable 0))).shift =
+        .existential (unary p (.variable 0)) := by
+      simp [unary, Formula.shift, Formula.rename, Formula.substitute,
+        liftSubstitution, Term.substitute]
+    rw [he]
+    apply Derivation.existentialIntro (.variable 0)
+    have whole : Derivation
+        (.conjunction (unary p (.variable 0)) (unary q (.variable 0)) ::
+          [Formula.existential (.conjunction (unary p (.variable 0))
+            (unary q (.variable 0)))].map Formula.shift)
+        (.conjunction (unary p (.variable 0)) (unary q (.variable 0))) :=
+      .assumption (by simp)
+    have part := Derivation.conjunctionLeft whole
+    simpa [unary, Formula.instantiate, Formula.substitute, Term.substitute, extend]
+      using part
+```
+
+The first branch uses the input existential. The second works under a conjunction about the fresh witness and the shifted old context. `he` identifies the shifted closed existential goal with itself; it is a syntactic equation. The branch projects its first conjunct and uses the same fresh variable as witness. Finally the existential-elimination node discharges the witness, so it cannot escape.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Apply classical reasoning to a quantified claim.** Build a tree for ¬¬∀x body → ∀x body; do not replace the tree with a Lean proof of its semantics.
+
+```lean
+def quantified_double_negation (body : Formula) :
+    Derivation [] (.implies (Formula.universal body).negation.negation (.universal body)) := by
+  sorry
+```
+
+*Hint:* Introduce the outer implication, use the object contradiction rule, then apply the double-negated assumption to its negation.
+
+**Connect a rule to entailment.** Use soundness of an object derivation to justify universal specialization in every model.
+
+```lean
+theorem universal_instance_semantics (body : Formula) (t : Term) :
+    Formula.Entails [.universal body] (body.instantiate t) := by
+  sorry
+```
+
+*Hint:* Build an object derivation with universal elimination, then use derivation_sound.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `quantified_double_negation`
+
+```lean
+def quantified_double_negation (body : Formula) :
+    Derivation [] (.implies (Formula.universal body).negation.negation (.universal body)) := by
+  apply Derivation.implicationIntro
+  apply Derivation.contradiction
+  apply Derivation.implicationElim (a := (Formula.universal body).negation)
+  · exact Derivation.assumption (a := (Formula.universal body).negation.negation) (by simp)
+  · exact Derivation.assumption (a := (Formula.universal body).negation) (by simp)
+```
+
+The quantified formula is treated as one conclusion by the classical contradiction rule. The context then contains its negation and double negation. Implication elimination yields falsehood. The tree is classical even though building its data uses no extra classical axiom.
+
+### `universal_instance_semantics`
+
+```lean
+theorem universal_instance_semantics (body : Formula) (t : Term) :
+    Formula.Entails [.universal body] (body.instantiate t) := by
+  exact derivation_sound (Derivation.universalElim t (.assumption (by simp)))
+```
+
+The assumption rule and universal elimination build the exact syntactic instance. The general soundness theorem then supplies its interpretation in every model satisfying the universal premise.
+
+## 11. Conclusion
+
+The four quantifier rules connect instances with universal and existential formulas. Their
+shifted contexts enforce fresh-variable discipline. The soundness theorem checks these rules
+over arbitrary interpretations. A returned tree is meaningful evidence; search will automate
+its construction without changing which inferences are permitted.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 1.11 — Searching for first-order derivations.

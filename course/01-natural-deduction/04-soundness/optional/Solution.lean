@@ -6,7 +6,7 @@ open Principia Principia.Form
 open scoped Principia.Form Principia
 namespace Course1.Soundness
 
-theorem consistency : ([] ⊢ Form.fls) → False := by
+theorem consistency : ([] ⊢ Form.falsum) → False := by
   intro d
   have h := tautology_of_proof d (fun _ => false)
   simp [eval] at h

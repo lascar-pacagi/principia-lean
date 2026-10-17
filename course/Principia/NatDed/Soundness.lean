@@ -36,7 +36,7 @@ theorem eval_or (v : Nat → Bool) (a b : Form) :
 
 /-- The classical core: if `∼a` being true forces `⊥` true (impossible), then `a` is true. -/
 theorem byContra_eval {v : Nat → Bool} {a : Form}
-    (h : eval v (∼a) = true → eval v Form.fls = true) : eval v a = true := by
+    (h : eval v (∼a) = true → eval v Form.falsum = true) : eval v a = true := by
   cases hx : eval v a with
   | true  => rfl
   | false => have hna : eval v (∼a) = true := by simp [eval_neg, hx]

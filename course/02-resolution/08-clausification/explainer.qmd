@@ -1,0 +1,314 @@
+---
+title: "2.8 — Automatic clausification and Skolem functions"
+---
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+## 1. The question: how does a quantified formula become clauses?
+
+Resolution expects clauses. To use it on a general formula, we first normalize the connectives,
+handle existential witnesses, give universal variables distinct names, and distribute the
+remaining conjunctions and disjunctions. `clausify` implements those steps.
+
+For proving a goal from Γ, we convert the **counterexample formula**: every assumption holds
+and the goal fails. If this formula has no model, the entailment holds. This reversal explains
+why the frontend negates the goal before calling resolution.
+
+## 2. Push negations towards predicates
+
+Negative normal form, `Nnf`, contains signed predicates, truth, falsehood, conjunction,
+disjunction, and quantifiers. It has no implication node. For example:
+
+```text
+¬(A → B) becomes A ∧ ¬B.
+¬∀x A(x) becomes ∃x ¬A(x).
+¬∃x A(x) becomes ∀x ¬A(x).
+```
+
+`a.toNnf true` translates a; polarity false translates its negation. The theorem
+`toNnf_correct` proves these equivalences in every model and environment. Negative universal
+normalization uses classical logic: a failed universal has a counterexample.
+
+## 3. Skolem functions remember which choices may depend on which objects
+
+Compare ∀x ∃y R(x,y) with ∃y ∀x R(x,y). In the first, choosing y may depend on x, so we use
+a new function f(x). In the second, one fixed witness must work for every x, so we use a new
+constant c. Changing that constant into f(x) would weaken the original requirement.
+
+```lean
+def dependentWitness : Formula := .universal (.existential
+  (.predicate 0 [.variable 1, .variable 0]))
+def fixedWitness : Formula := .existential (.universal
+  (.predicate 0 [.variable 1, .variable 0]))
+#eval (clausify dependentWitness).skolemSymbols
+#eval (clausify fixedWitness).skolemSymbols
+```
+
+The metadata records dependencies [0] for the first witness and [] for the second.
+A fresh function-symbol index starts above every function symbol used in the input.
+Each existential receives a separate symbol, and each universal receives a globally fresh
+variable index, including across different branches of a connective.
+
+Skolemization preserves **satisfiability through expansion of the model**, not equivalence
+in the unchanged language: the new function must be interpreted by suitable witnesses.
+The library proves both directions: construction of an expanded model and recovery of a
+satisfying interpretation of the original formula. Section 5 explains how those proofs
+connect the executable conversion to the original goal.
+
+## 4. Free variables and the meaning of a counterexample
+
+A counterexample only needs one environment where the formula holds. Free variables are
+therefore existentially closed: the compiler first assigns them fresh constants. For instance,
+P(x) ∧ ¬P(y) can hold when x and y denote different objects. Turning both free variables
+into universally quantified clause variables would instead force P and ¬P everywhere.
+
+Under an enclosing universal, the compiler's substitution map remembers the original free
+constants separately from the newly bound variable. This also avoids accidental capture.
+
+After removing quantifiers, a `Matrix` contains signed atoms and positive connectives.
+Conjunction concatenates clause sets. Disjunction takes their Cartesian product and
+concatenates each pair of clauses:
+
+```text
+(A ∧ B) ∨ C becomes (A ∨ C) ∧ (B ∨ C).
+```
+
+`matrix_toClauses_correct` proves this distribution correct in every fixed model and
+environment. It can increase output size exponentially; this is the straightforward
+conversion rather than a size-optimized Tseitin encoding.
+
+## 5. Why the complete conversion preserves satisfiability
+
+### 5.1 Expand a model by interpreting the fresh symbols
+
+Suppose a formula holds in model M at an environment ρ. First interpret its fresh free-variable
+constants as the values supplied by ρ. For example, if ρ sends x to 3 and y to 8, their two
+fresh constants must denote 3 and 8; they are not required to denote every object.
+
+Next assign meanings to the Skolem functions. For ∀x ∃y R(x,y), the interpretation of f receives
+an object x and chooses a y satisfying R(x,y). If R means y = x + 1 on natural numbers,
+f can mean successor. For ∃y ∀x R(x,y), the chosen constant must satisfy the condition for
+all x. A choice depending on x would not establish that original statement.
+
+The construction uses classical choice to select witnesses. The function receives only its
+recorded universal arguments. `reconstruct` rebuilds the needed environment from those
+arguments, so two calls with the same arguments make the same choice. When no witness is
+needed because the relevant condition is false, a default object makes the function total.
+The nonempty-domain assumption supplies that default.
+
+Fresh symbol bounds ensure that later choices preserve the meanings of the original symbols
+and of every earlier Skolem function. The checked theorem is:
+
+```text
+clausify_model_expansion inhabited M ρ a ha :
+  ∃ N : Model D, AgreeBelow M N a.functionBound ∧
+    SatisfiesClauses N (clausify a).clauses
+```
+
+Here `ha : a.evaluate M ρ` is evidence that the input holds. The expanded model N uses the
+same domain D. `AgreeBelow` preserves all predicate interpretations and the function symbols
+below the input's fresh-symbol bound. Thus the proof does not change an existing symbol's
+meaning to make a difficult formula true.
+
+For example, we can use the theorem while discarding the extra agreement evidence:
+
+```lean
+example {D : Type} (inhabited : Nonempty D) (M : Model D) (ρ : Nat → D)
+    (input : Formula) (holds : input.evaluate M ρ) :
+    ∃ expanded : Model D, SatisfiesClauses expanded (clausify input).clauses := by
+  obtain ⟨expanded, preserved, satisfied⟩ :=
+    clausify_model_expansion inhabited M ρ input holds
+  exact ⟨expanded, satisfied⟩
+```
+
+The `obtain` introduces a model and two proofs. `satisfied` has exactly the property needed
+for the existential result; `preserved` records the agreement we could use in another argument.
+
+### 5.2 Recover the original formula from any model of the clauses
+
+The reverse direction starts from a model satisfying **every clause under every environment**.
+Read the values of the free constants to recover an environment for the original free variables.
+Read each Skolem function value as the witness at its existential binder. The variables
+allocated for universals remain arbitrary, so their claims hold for every object.
+
+Disjunction requires care. `(∀x P(x)) ∨ (∀y Q(y))` becomes a matrix using distinct variables
+for x and y. It would be wrong to identify them and test only `∀z (P(z) ∨ Q(z))`.
+For example, over Bool let P(b) mean b = true and Q(b) mean b = false. The latter shared-variable
+formula is true, while neither original universal is true. The correct clause fails when
+x = false and y = true.
+
+In the recovery proof, if the left universal branch fails, fix a failing assignment to its
+fresh variables. The right branch's fresh variables can still vary independently. Since the
+compiled disjunction holds under every environment, the right branch must then hold under
+all its required assignments. The variable bounds justify this independence formally.
+
+`clausify_model_recovery inhabited M a h` produces `∃ ρ, a.evaluate M ρ` from a model of the
+compiled clauses. Combining both directions gives the general theorem:
+
+```text
+clausify_equisatisfiable a :
+  a.Satisfiable ↔ ClausesSatisfiable (clausify a).clauses
+```
+
+`a.Satisfiable` means that some nonempty domain, model, and environment satisfy a.
+`ClausesSatisfiable` asks for a model satisfying the clauses under every environment.
+The equivalence covers arbitrary quantifier alternations, nested terms, and free variables.
+The NNF theorem and matrix-to-CNF theorem connect the other two conversion stages to it.
+
+### 5.3 A clause refutation now certifies the original goal directly
+
+`counterexampleFormula Γ goal` states that all assumptions hold and the goal fails.
+If the goal did have a countermodel, the expansion theorem would give a model of its generated
+clauses. A resolution refutation rules out that model. Therefore the original entailment holds.
+
+`proveViaClauses rounds unifyFuel Γ goal` returns a `ClausalProof Γ goal` containing that
+actual resolution refutation. `proof.sound` establishes the original entailment using the
+verified conversion and resolution soundness. The frontend runs one resolution search.
+
+```lean
+def objectC : Term := .function 0 []
+def inputP (t : Term) : Formula := .predicate 0 [t]
+def outputQ (t : Term) : Formula := .predicate 1 [t]
+def universalRule : Formula := .universal
+  (.implies (inputP (.variable 0)) (outputQ (.variable 0)))
+#eval (proveViaClauses 2 20 [universalRule, inputP objectC] (outputQ objectC)).isSome
+```
+
+The output is true. The two bounds control saturation rounds and each unification attempt.
+A failed finite attempt still means unknown. In the next lesson, general resolution completeness
+will connect existence of a refutation with existence of a natural-deduction derivation.
+The mathematical view `proof.derivation` uses that completeness theorem noncomputably;
+it is not an additional executable search or a tree stored in the returned certificate.
+
+## 6. Prove it
+
+Work in `Skeleton.lean`. These exercises apply the new ideas to statements different from
+the worked examples. Try them before reading the corrections.
+
+```bash
+make lab C=02-resolution/08-clausification
+```
+
+Relate the generated clauses of a disjunction matrix to its semantic alternatives.
+
+```lean
+theorem matrix_disjunction_clauses {D : Type} (M : Model D) (ρ : Nat → D) (a b : Matrix) :
+    ClausesAt M ρ (Matrix.disjunction a b).toClauses ↔ a.evaluate M ρ ∨ b.evaluate M ρ := by
+  sorry
+```
+
+Establish validity of a closed original goal using a returned resolution certificate.
+
+```lean
+theorem clausal_proof_valid (goal : Formula) (proof : ClausalProof [] goal) :
+    Formula.Valid goal := by
+  sorry
+```
+
+## 7. Graduated hints
+
+### `matrix_disjunction_clauses`
+
+**First hint.** The general matrix theorem applies to a disjunction node.
+
+**Next hint.** Its semantic right side reduces to the displayed disjunction.
+
+### `clausal_proof_valid`
+
+**First hint.** The certificate has a soundness theorem about the original conclusion.
+
+**Next hint.** Use proof.sound; validity is entailment from the empty context.
+
+## 8. Worked corrections
+
+These exact proofs are also in `Solution.lean`, checked by `make test`.
+
+### `matrix_disjunction_clauses`
+
+```lean
+theorem matrix_disjunction_clauses {D : Type} (M : Model D) (ρ : Nat → D) (a b : Matrix) :
+    ClausesAt M ρ (Matrix.disjunction a b).toClauses ↔ a.evaluate M ρ ∨ b.evaluate M ρ :=
+  matrix_toClauses_correct M ρ (.disjunction a b)
+```
+
+The matrix correctness theorem applies to every matrix, including this disjunction. Its evaluation unfolds to the two semantic alternatives. This uses the proved CNF pass and makes no claim about Skolemization.
+
+### `clausal_proof_valid`
+
+```lean
+theorem clausal_proof_valid (goal : Formula) (proof : ClausalProof [] goal) :
+    Formula.Valid goal := proof.sound
+```
+
+The certificate stores a refutation of the counterexample clauses. Its soundness theorem uses the verified model expansion and resolution soundness to establish the original entailment. The empty context makes that entailment validity.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Pending optional proofs are reported separately and do not
+fail completed required work.
+
+Express negative universal normalization as existence of a semantic counterexample.
+
+```lean
+theorem negative_universal {D : Type} (M : Model D) (ρ : Nat → D) (body : Formula) :
+    ((Formula.universal body).toNnf false).evaluate M ρ ↔
+      ∃ x, ¬body.evaluate M (extend x ρ) := by
+  sorry
+```
+
+*Hint:* Use negative-polarity NNF correctness and Classical.not_forall.
+
+Check a witness nested under two universals, with a nontrivial argument order.
+
+```lean
+theorem two_universal_dependencies :
+    (clausify (.universal (.universal (.existential
+      (.predicate 0 [.variable 2, .variable 0, .variable 1]))))).skolemSymbols =
+      [⟨0, [0, 1]⟩] := by
+  sorry
+```
+
+*Hint:* Compute the compiler metadata; expand support, function bounds, NNF, and skolemize.
+
+## 10. Optional corrections
+
+These proofs are in `optional/Solution.lean`, included in the checks and exercise reset.
+
+### `negative_universal`
+
+```lean
+theorem negative_universal {D : Type} (M : Model D) (ρ : Nat → D) (body : Formula) :
+    ((Formula.universal body).toNnf false).evaluate M ρ ↔
+      ∃ x, ¬body.evaluate M (extend x ρ) := by
+  rw [toNnf_correct]
+  exact Classical.not_forall
+```
+
+NNF correctness converts the left side to failure of the universal semantic claim. Classical.not_forall expresses that failure as a counterexample object. This is the semantic rule used in negative quantifier normalization.
+
+### `two_universal_dependencies`
+
+```lean
+theorem two_universal_dependencies :
+    (clausify (.universal (.universal (.existential
+      (.predicate 0 [.variable 2, .variable 0, .variable 1]))))).skolemSymbols =
+      [⟨0, [0, 1]⟩] := by
+  simp [clausify, Formula.functionBound, Term.functionBound, Formula.support,
+    Term.support, lowerSupport, Formula.toNnf, skolemize]
+```
+
+The witness is chosen after both universal objects, so its fresh function has two arguments. The metadata records universal variables [0,1] even though the predicate uses them in a different argument order.
+
+## 11. Conclusion
+
+The complete executable conversion preserves satisfiability: model expansion interprets the fresh symbols, and model recovery reconstructs the original satisfying environment. NNF, Skolemization, variable allocation, and matrix-to-CNF are connected by general proofs. A resolution refutation therefore certifies the original entailment directly. Finite-model regressions provide additional checks of dependency and free-variable behavior.
+
+## 12. Going further
+
+- **Next:** 2.9 — General first-order resolution completeness.
+- Review the local **Logic and Proof** first-order chapters for the distinction between
+  derivations, interpretations, and proof search. The Lean modules under `Principia/FirstOrder/`
+  contain the constructions and exact checked theorem statements.

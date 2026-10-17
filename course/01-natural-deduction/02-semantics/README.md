@@ -1,7 +1,9 @@
 # 1.2 — Semantics: valuations and truth tables
 
 Read the explainer for step-by-step examples and proof states. Teaching examples have different
-statements from the exercises. Supporting definitions are supplied in `Skeleton.lean`; full
+statements from the exercises. The final required exercise builds the Boolean dual of a formula
+and proves its evaluation law by structural induction. Supporting definitions are supplied in
+`Skeleton.lean`; full
 corrections appear after the hints and in the verified answer keys.
 
 ```bash

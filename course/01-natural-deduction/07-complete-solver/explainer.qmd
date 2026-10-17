@@ -315,7 +315,7 @@ Split on the finite table. If it is true, the certified equivalence gives validi
 
 ## 11. Conclusion
 
-Course 1 now ends with a running complete solver. The rules are sound and complete for
+The propositional part of Course 1 now has a running complete solver. The rules are sound and complete for
 classical propositional semantics; the final algorithm decides every finite propositional input
 and returns an actual derivation on success. Its negative answers certify invalidity. Its total
 definitions establish termination without a guessed search budget. The earlier limited search
@@ -327,5 +327,7 @@ remains useful for understanding strategies, while the final solver meets the fu
   propositional syntax, semantics, and natural-deduction chapters with these definitions.
 - **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
   review inductive types, dependent functions, and recursion as needed.
-- **Next: Course 2.** A resolution prover uses another proof system and reuses our syntax
-  and semantics. First-order logic is a separate extension, not a capability of this solver.
+- **Next: [1.8 — First-order syntax](../08-first-order-syntax/explainer.qmd).** Add terms,
+  variables, and quantifiers, then study their semantics and proof rules. The complete solver
+  built here continues to handle propositional inputs; first-order search has different limits.
+- **Course 2** develops resolution, including a first-order extension after its propositional lessons.

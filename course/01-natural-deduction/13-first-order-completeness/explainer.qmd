@@ -1,0 +1,233 @@
+---
+title: "1.13 — General completeness of first-order natural deduction"
+---
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+## 1. The question: where do the objects of our countermodel come from?
+
+We now have a consistent theory deciding every formula and supplying existential witnesses.
+Our domain will be **all finite terms**, including arbitrarily nested function applications.
+The syntax leaf `variable i` can itself serve as a parameter object of this model.
+
+For example, a term model can contain c, f(c), f(f(c)), and every further finite application.
+We make no assumption that a small finite domain will suffice.
+
+## 2. Define the interpretation from the theory
+
+`Henkin.model Γ` interprets a function symbol by constructing its term tree:
+
+```text
+function f [t₁,...,tₖ] = Term.function f [t₁,...,tₖ]
+predicate p [t₁,...,tₖ] holds exactly when
+  Henkin.Theory Γ (Formula.predicate p [t₁,...,tₖ]).
+```
+
+The identity environment sends index i to the parameter object `Term.variable i`.
+`Henkin.term_identity` proves that evaluating any term there returns that term itself.
+The predicate interpretation is a Lean proposition about derivability, not an executable
+Boolean test. This is a mathematical model, not the search program.
+
+## 3. The truth lemma connects interpretation and membership
+
+The central theorem says, for consistent Γ:
+
+```text
+Henkin.truth_lemma hΓ a :
+  a.evaluate (Henkin.model Γ) Term.variable ↔ Henkin.Theory Γ a
+```
+
+For a predicate, this is how the model was defined. For a conjunction, the theory contains
+the pair exactly when it contains both components, by introduction and projection rules.
+For a disjunction, completeness of the theory rules out the case where both alternatives
+are absent: their negations would refute the disjunction.
+
+Quantifiers are the essential new step. A universal formula in the theory supplies every
+term instance by universal elimination. Conversely, if the universal were absent, its negation
+would be present. Classical reasoning derives an existential counterexample, and the witness
+property supplies a term where the body fails. That contradicts all term instances holding.
+An existential is handled directly by its witness and existential introduction.
+
+Instantiation changes terms without changing the body's number of logical connectives.
+The Lean proof recurses on that logical size, so it can apply the induction hypothesis to
+instances containing larger term trees. Structural induction on the full term/formula size
+would not justify that particular recursive call.
+
+## 4. Turn an unprovable conclusion into a countermodel
+
+Suppose Γ does not derive a. Then ¬a :: Γ is consistent: a derivation of falsum from that
+context would give a by the classical contradiction rule.
+
+Build the Henkin model for this enlarged context. The truth lemma makes every original
+assumption true and makes ¬a true. Thus a is false in this model. We have constructed a
+countermodel to the proposed entailment Γ ⊨ a.
+
+Contrapositively, entailment implies existence of a derivation:
+
+```text
+deduction_complete : Formula.Entails Γ a → Nonempty (Derivation Γ a)
+deduction_iff_entails Γ a :
+  Nonempty (Derivation Γ a) ↔ Formula.Entails Γ a
+```
+
+The second theorem combines general completeness with the earlier soundness theorem.
+It covers arbitrary formulas and finite assumption contexts in our equality-free first-order
+language, over arbitrary nonempty domains. The added structural weakening and fresh-index
+quantifier variants are explicit constructors with their own checked soundness cases.
+
+## 5. Using completeness is different from running search
+
+Here we use a semantic argument to establish the existence of a proof of a new disjunction:
+
+```lean
+example (a : Formula) (valid : Formula.Valid a) :
+    Nonempty (Derivation [] (.disjunction a a)) := by
+  apply deduction_complete
+  intro D inhabited M ρ assumptions
+  exact Or.inl (valid D inhabited M ρ assumptions)
+```
+
+After `apply deduction_complete`, the goal is entailment. The introductions select an arbitrary
+domain, evidence it is inhabited, a model, an environment, and truth of the empty context.
+`valid` supplies truth of a there; `Or.inl` builds the semantic disjunction.
+
+This theorem establishes `Nonempty`: some finite derivation exists. Its Henkin construction
+uses classical, noncomputable choices, and does not provide a terminating executable validity
+decider. The finite search interfaces from 1.11 still return unknown on failure. A separate
+eventual-success theorem for those particular implementations has not been proved.
+
+## 6. Prove it
+
+Work in `Skeleton.lean`. These exercises apply the new ideas to statements different from
+the worked examples. Try them before reading the corrections.
+
+```bash
+make lab C=01-natural-deduction/13-first-order-completeness
+```
+
+Combine the two general directions for a closed conclusion.
+
+```lean
+theorem closed_proof_iff_valid (a : Formula) :
+    Nonempty (Derivation [] a) ↔ Formula.Valid a := by
+  sorry
+```
+
+Replace each original assumption by a semantic consequence of a different context.
+
+```lean
+theorem provability_transfers (Γ Δ : List Formula) (a : Formula)
+    (available : ∀ b ∈ Γ, Formula.Entails Δ b) (proof : Nonempty (Derivation Γ a)) :
+    Nonempty (Derivation Δ a) := by
+  sorry
+```
+
+## 7. Graduated hints
+
+### `closed_proof_iff_valid`
+
+**First hint.** Validity is entailment from the empty context.
+
+**Next hint.** Specialize deduction_iff_entails at [].
+
+### `provability_transfers`
+
+**First hint.** Use general completeness after establishing entailment from Δ.
+
+**Next hint.** Soundness interprets the original derivation; available supplies each interpreted assumption.
+
+## 8. Worked corrections
+
+These exact proofs are also in `Solution.lean`, checked by `make test`.
+
+### `closed_proof_iff_valid`
+
+```lean
+theorem closed_proof_iff_valid (a : Formula) :
+    Nonempty (Derivation [] a) ↔ Formula.Valid a := deduction_iff_entails [] a
+```
+
+Formula.Valid is defined as entailment from []. The general equivalence therefore already has the required type; no extra proof construction is needed.
+
+### `provability_transfers`
+
+```lean
+theorem provability_transfers (Γ Δ : List Formula) (a : Formula)
+    (available : ∀ b ∈ Γ, Formula.Entails Δ b) (proof : Nonempty (Derivation Γ a)) :
+    Nonempty (Derivation Δ a) := by
+  apply deduction_complete
+  intro D inhabited M ρ hΔ
+  exact (deduction_iff_entails Γ a).mp proof D inhabited M ρ
+    (fun b hb => available b hb D inhabited M ρ hΔ)
+```
+
+Completeness changes the requested existence of a derivation into a semantic goal. At an arbitrary model satisfying Δ, available establishes every assumption of Γ. Soundness of the original derivation then gives a.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Pending optional proofs are reported separately and do not
+fail completed required work.
+
+Relate failure of validity to absence of any closed derivation.
+
+```lean
+theorem not_valid_iff_no_closed_proof (a : Formula) :
+    ¬Formula.Valid a ↔ ¬Nonempty (Derivation [] a) := by
+  sorry
+```
+
+*Hint:* Negate both sides of the closed soundness/completeness equivalence.
+
+Establish existence of a proof that projects a universally quantified conjunction.
+
+```lean
+theorem quantified_left_projection (p q : Nat) :
+    Nonempty (Derivation [] (.implies
+      (.universal (.conjunction (.predicate p [.variable 0]) (.predicate q [.variable 0])))
+      (.universal (.predicate p [.variable 0])))) := by
+  sorry
+```
+
+*Hint:* Use completeness; in an arbitrary model, specialize the universal hypothesis and project the first part.
+
+## 10. Optional corrections
+
+These proofs are in `optional/Solution.lean`, included in the checks and exercise reset.
+
+### `not_valid_iff_no_closed_proof`
+
+```lean
+theorem not_valid_iff_no_closed_proof (a : Formula) :
+    ¬Formula.Valid a ↔ ¬Nonempty (Derivation [] a) :=
+  not_congr (deduction_iff_entails [] a).symm
+```
+
+The equivalence has validity on the required side after symmetry. not_congr applies negation to both sides of that equivalence.
+
+### `quantified_left_projection`
+
+```lean
+theorem quantified_left_projection (p q : Nat) :
+    Nonempty (Derivation [] (.implies
+      (.universal (.conjunction (.predicate p [.variable 0]) (.predicate q [.variable 0])))
+      (.universal (.predicate p [.variable 0])))) := by
+  apply deduction_complete
+  intro D inhabited M ρ assumptions h x
+  exact (h x).1
+```
+
+After applying completeness, the target is semantic entailment. The quantified hypothesis can be applied to an arbitrary object x, yielding a pair. Its first component proves the interpreted predicate at x.
+
+## 11. Conclusion
+
+Every semantic consequence of a finite context has a finite natural-deduction derivation, and every derivation is semantically sound. Henkin extensions and the truth lemma establish the missing general direction. This mathematical existence theorem is distinct from completeness or termination of a particular proof-search implementation.
+
+## 12. Going further
+
+- **Next:** Course 2 — Resolution, including its first-order extension.
+- Review the local **Logic and Proof** first-order chapters for the distinction between
+  derivations, interpretations, and proof search. The Lean modules under `Principia/FirstOrder/`
+  contain the constructions and exact checked theorem statements.

@@ -108,7 +108,7 @@ def useEither (Γ : List Form) (a b c : Form)
 
 The two branches can have different assumptions but must end at the same formula c.
 
-`flsE` derives any conclusion from a derivation of `Form.fls`. `raa` instead allows a
+`flsE` derives any conclusion from a derivation of `Form.falsum`. `raa` instead allows a
 classical proof by contradiction: derive falsehood under the added assumption `∼a`, then
 conclude a in the original context. A small complete example is double-negation elimination:
 
@@ -122,7 +122,7 @@ def eliminateDoubleNegation (a : Form) : [] ⊢ (∼∼a ⇒ a) := by
 ```
 
 After `impI` and `raa`, the context is `[∼a, ∼∼a]` and the goal formula is falsehood.
-Since `∼∼a` is `(∼a) ⇒ fls`, `impE` can apply that assumption to `∼a`. This uses the
+Since `∼∼a` is `(∼a) ⇒ falsum`, `impE` can apply that assumption to `∼a`. This uses the
 **object system's** classical constructor `raa`; it doesn't invoke Lean's `Classical.em`.
 A derivation can contain `raa` even when its Lean construction has no `Classical.choice`
 dependency. The axiom report and the list of rules used inside our trees describe different levels.

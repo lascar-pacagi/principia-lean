@@ -53,7 +53,7 @@ theorem distribute_eval (v) (s1 s2 : Cnf) :
 
 def toCnf : Bool → Form → Cnf
   | b, .var n   => [[{var := n, pol := b}]]
-  | b, .fls     => if b then [[]] else []
+  | b, .falsum     => if b then [[]] else []
   | b, .and a c => if b then toCnf true a ++ toCnf true c else distribute (toCnf false a) (toCnf false c)
   | b, .or a c  => if b then distribute (toCnf true a) (toCnf true c) else toCnf false a ++ toCnf false c
   | b, .imp a c => if b then distribute (toCnf false a) (toCnf true c) else toCnf true a ++ toCnf false c

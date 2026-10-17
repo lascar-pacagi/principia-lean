@@ -25,3 +25,4 @@ saves backups before replacing completed bodies.
 
 Course 1 progresses from formulas and valuations to derivations, soundness, limited search,
 executable completeness, and a complete terminating propositional solver in lesson 1.7.
+Lessons 1.8–1.11 then add first-order terms, models, quantifier rules, and proof search.

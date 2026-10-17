@@ -1,5 +1,6 @@
 import Principia.Logic
 import Principia.NatDed
+import Principia.FirstOrder
 import Principia.Resolution
 import Principia.Sat
 import Principia.Euclid

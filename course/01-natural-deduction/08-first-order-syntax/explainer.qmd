@@ -1,0 +1,252 @@
+---
+title: "1.8 — First-order terms, variables, and capture-avoiding substitution"
+---
+
+> **Where you are.** The propositional solver is complete for formulas made from atomic
+> Boolean inputs. We now add terms and quantified formulas. This is a new language in its
+> own namespace; the earlier solver and its guarantees remain available for propositional inputs.
+
+## 1. The question: what does “every person” refer to?
+
+Propositional logic can treat “Ada is mortal” as an indivisible atom. First-order logic can
+represent its pieces: a predicate mortal applied to an object Ada. It can also express a rule
+about every object, such as “every bird is an animal.” We need two kinds of syntax:
+
+- A **term** describes an object: a variable, a constant, or a function applied to arguments.
+- A **formula** describes a claim: a predicate applied to terms, a connective, or a quantified claim.
+
+A term doesn't carry a Boolean truth value. A predicate application is a formula, not a term.
+Neither becomes an actual object or truth claim until an interpretation supplies its meaning.
+
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+
+## 2. Terms and their arguments
+
+```lean
+def exampleTerm : Term :=
+  .function 2 [.variable 0, .function 3 []]
+#check exampleTerm
+#eval exampleTerm.substitute (fun _ => .function 4 [])
+```
+
+The term uses function symbol 2 with two arguments: variable 0 and the constant named 3.
+A constant is a function symbol with an empty argument list. The output replaces the variable
+with constant 4 and leaves the existing constant 3 in place. Function symbols here don't mean
+addition or multiplication unless a model later interprets them that way.
+
+`Term.function` stores a symbol name and a list of arguments. The pair of symbol name and
+argument count identifies its arity in this representation. The library provides a computable
+equality procedure for these nested trees; you don't have to implement that support code.
+
+A substitution `σ : Nat → Term` assigns a term to each variable index. `t.substitute σ`
+applies it simultaneously: replacing a variable with σ's term doesn't repeatedly substitute
+inside that replacement. Chaining substitutions requires composition, which the unification
+lesson will make explicit.
+
+## 3. Formulas and what their numbers mean
+
+The new constructors are `predicate`, `falsum`, `implies`, `conjunction`, `disjunction`,
+`universal`, and `existential`. For example:
+
+```lean
+#check Formula.predicate 5 [.function 3 []]
+#check Formula.universal (.predicate 5 [.variable 0])
+```
+
+The first is P(c). The second is ∀x P(x). The number 5 names the predicate, and 3 names a
+constant. A **variable index** instead tells us where to find a variable's value. It is not
+an atom name as `Form.var 0` was in the propositional course.
+
+We use **de Bruijn indices** to represent binding without storing variable names:
+
+| Inside the body of ∀x ∀y R(x,y) | Index |
+|---|---|
+| y, introduced by the nearest quantifier | 0 |
+| x, introduced by the next quantifier outward | 1 |
+
+The formula is `universal (universal (predicate r [variable 1, variable 0]))`.
+Indices beyond the surrounding binders refer to free variables. Entering a new binder moves
+older variables one position outward, so their indices increase by one.
+
+## 4. Instantiation and capture avoidance
+
+To specialize ∀x ∀y R(x,y) at x = c, keep y bound and replace only the references to x:
+
+```lean
+def innerBody : Formula :=
+  .universal (.predicate 1 [.variable 1, .variable 0])
+#eval innerBody.instantiate (.function 3 [])
+```
+
+The result is ∀y R(c,y). `instantiate` replaces the outer variable being supplied and lowers
+the remaining outer indices. Under the inner binder, it preserves y's index zero.
+
+Why must replacement change under a binder? Suppose a replacement term contains a free
+variable. If we inserted it below a new binder without shifting it, index zero would suddenly
+refer to the newly bound variable. That would change a free reference into a bound one:
+**variable capture**.
+
+`liftSubstitution` prevents this. Below one binder it leaves index zero alone and shifts
+free variables in replacement terms by one. For example:
+
+```lean
+#eval (Formula.universal (.predicate 1 [.variable 1, .variable 0])).substitute
+  (fun _ => .variable 2)
+```
+
+The bound argument stays variable 0. The substituted free argument becomes variable 3:
+its original free index 2 has moved under one additional binder. These index adjustments
+are part of the definition, not side conditions that the learner must remember manually.
+
+## 5. What this extension includes
+
+The core is first-order predicate logic **without built-in equality**. Lean equality between
+two syntax values still lets us state facts about substitution; that is different from a
+logical formula asserting two domain objects are equal. Equality rules for domain objects
+would be an additional extension.
+
+The next lesson interprets terms in arbitrary nonempty domains and quantifiers over those
+domains. Then we add proof rules and proof-producing searches. A failed finite first-order
+search will mean unknown; the propositional solver's terminating yes/no guarantee doesn't
+extend to arbitrary quantified formulas.
+
+## 6. Prove it
+
+Complete `Skeleton.lean`. Supplied definitions are marked GIVEN. The examples above have
+different statements; the full exercise corrections follow the hints.
+
+```bash
+make lab C=01-natural-deduction/08-first-order-syntax
+```
+
+**Substitute one variable.** State what an arbitrary substitution does to a variable leaf, without choosing a particular index or replacement.
+
+```lean
+theorem substitute_variable (σ : Nat → Term) (i : Nat) :
+    Term.substitute σ (.variable i) = σ i := by
+  sorry
+```
+
+**Specialize a unary predicate.** Replacing the quantified input of P(x) with t should produce P(t), with the same predicate symbol.
+
+```lean
+theorem instantiate_unary (p : Nat) (t : Term) :
+    (Formula.predicate p [.variable 0]).instantiate t = .predicate p [t] := by
+  sorry
+```
+
+The required proofs determine the lab result. Optional work has a separate yellow pending
+status when terminal colors are available and cannot make completed required work fail.
+
+## 7. Graduated hints
+
+### `substitute_variable`
+
+**First hint.** Select the variable equation of term substitution.
+
+**Next hint.** Unfold only `Term.substitute`; there is no argument list to traverse.
+
+### `instantiate_unary`
+
+**First hint.** Expand instantiation into substitution of the binder input.
+
+**Next hint.** Expand the predicate and term-variable substitution equations; `extend` sends zero to t.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. These exact proofs are in `Solution.lean`,
+checked by `make test`.
+
+### `substitute_variable`
+
+```lean
+theorem substitute_variable (σ : Nat → Term) (i : Nat) :
+    Term.substitute σ (.variable i) = σ i := by
+  simp [Term.substitute]
+```
+
+The variable equation selects σ at i. This states the behavior for an arbitrary substitution, not only for a concrete list of bindings. No induction is necessary because the outer constructor is known.
+
+### `instantiate_unary`
+
+```lean
+theorem instantiate_unary (p : Nat) (t : Term) :
+    (Formula.predicate p [.variable 0]).instantiate t = .predicate p [t] := by
+  simp [Formula.instantiate, Formula.substitute, Term.substitute, extend]
+```
+
+Instantiation uses `extend t Term.variable`: index zero maps to t and old outer indices are lowered. The single argument is index zero, so the predicate retains its symbol and receives t as its argument.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Its two goals are registered with the lab and reset tool too.
+
+**Substitute beneath two binders.** Preserve the bound argument while adjusting the free replacement through both binding levels.
+
+```lean
+theorem capture_avoiding_example :
+    (Formula.universal (.universal
+      (.predicate 2 [.variable 2, .variable 0]))).substitute
+      (fun _ => .variable 3) = .universal (.universal
+        (.predicate 2 [.variable 5, .variable 0])) := by
+  sorry
+```
+
+*Hint:* Apply lifting beneath both binders. Distinguish the outer free reference from the innermost bound reference.
+
+**Remove an unused binder.** The body refers to an outer variable rather than its quantified input. Determine how that reference is renumbered.
+
+```lean
+theorem instantiate_unused (p : Nat) (t : Term) :
+    (Formula.predicate p [.variable 1]).instantiate t = .predicate p [.variable 0] := by
+  sorry
+```
+
+*Hint:* The only argument refers past the removed binder; it is lowered rather than replaced with t.
+
+## 10. Worked corrections to the optional exercises
+
+These proofs are in `optional/Solution.lean`, checked and audited with the main answers.
+
+### `capture_avoiding_example`
+
+```lean
+theorem capture_avoiding_example :
+    (Formula.universal (.universal
+      (.predicate 2 [.variable 2, .variable 0]))).substitute
+      (fun _ => .variable 3) = .universal (.universal
+        (.predicate 2 [.variable 5, .variable 0])) := by
+  simp [Formula.substitute, liftSubstitution, Term.rename, Term.substitute]
+```
+
+The free reference starts at index two beneath two binders. Replacing it with free variable three requires shifting twice, to index five. The innermost bound reference remains zero. Both binding levels must be preserved.
+
+### `instantiate_unused`
+
+```lean
+theorem instantiate_unused (p : Nat) (t : Term) :
+    (Formula.predicate p [.variable 1]).instantiate t = .predicate p [.variable 0] := by
+  simp [Formula.instantiate, Formula.substitute, Term.substitute, extend]
+```
+
+Index one refers to an outer variable rather than to the binder input at zero. Removing that binder lowers the index to zero. The chosen term t is unused, which is legitimate because the instantiated variable did not occur.
+
+## 11. Conclusion
+
+Terms describe objects; predicate applications and quantifiers build claims. Variable indices
+record binding positions, so entering and removing a binder changes how outer references are
+numbered. Lifting substitutions preserves those references and prevents capture. Next we
+interpret this syntax over arbitrary domains before validating proof rules.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: first-order syntax,
+  quantifier rules, structures, and interpretations.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  dependent types, recursive definitions, and the relationship between data and evidence.
+- **Next:** 1.9 — First-order semantics: domains, models, and quantifiers.

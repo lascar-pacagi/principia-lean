@@ -33,9 +33,9 @@ inductive Deriv : List Form → Form → Type where
   /-- ∨-elimination (case split) -/
   | orE   {Γ a b c} : Deriv Γ (a ⋎ b) → Deriv (a :: Γ) c → Deriv (b :: Γ) c → Deriv Γ c
   /-- ⊥-elimination (ex falso quodlibet) -/
-  | flsE  {Γ a}     : Deriv Γ Form.fls → Deriv Γ a
+  | flsE  {Γ a}     : Deriv Γ Form.falsum → Deriv Γ a
   /-- reductio ad absurdum (the classical rule): assume `∼a`, derive `⊥` -/
-  | raa   {Γ a}     : Deriv (Form.neg a :: Γ) Form.fls → Deriv Γ a
+  | raa   {Γ a}     : Deriv (Form.neg a :: Γ) Form.falsum → Deriv Γ a
 
 @[inherit_doc] scoped notation:40 Γ " ⊢ " φ => Deriv Γ φ
 

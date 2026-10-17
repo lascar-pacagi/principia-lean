@@ -21,6 +21,8 @@ test: build  ## build the library + kernel-check every Solution.lean (always GRE
 	  for f in $$files; do echo "  lean  $$f"; lake env lean "$$f"; done; fi; \
 	echo "✓ all solutions kernel-certified"
 	@lake env lean tooling/test_complete_solver.lean
+	@lake env lean tooling/test_first_order.lean
+	@lake env lean tooling/test_first_order_completeness.lean
 
 lab: build  ## check required exercises + report optional progress: make lab C=<dir>
 	@test -n "$(C)" || { echo "usage: make lab C=<concept-dir>  (e.g. 00-foundations/00-setup)"; exit 2; }
@@ -32,6 +34,10 @@ reset:  ## reset exercises to sorry (backup saved); optional C=<dir> or DRY_RUN=
 test-solver: build  ## exercise the complete propositional solver and generated proofs
 	@lake env lean tooling/test_complete_solver.lean
 
+test-first-order: build  ## check first-order quantifiers, unification, and proof-producing searches
+	@lake env lean tooling/test_first_order.lean
+	@lake env lean tooling/test_first_order_completeness.lean
+
 test-reset:  ## check the exercise reset tool on temporary copies
 	@python3 -m unittest discover -s tooling -p 'test_reset_exercises.py'
 
@@ -40,10 +46,10 @@ axioms:  ## honesty audit: no stray sorry/axiom; no sorryAx in keystones
 
 explainer:  ## render one lesson to HTML/PDF: make explainer C=<dir>
 	@test -n "$(C)" || { echo "usage: make explainer C=<concept-dir>"; exit 2; }
-	@quarto render "$(C)/explainer.qmd"
+	@quarto render "$(C)/explainer.qmd" --to all
 
 docs:  ## render all explainers
-	@quarto render
+	@quarto render --to all
 
 preview:  ## live-preview the docs
 	@quarto preview
@@ -51,4 +57,4 @@ preview:  ## live-preview the docs
 clean:  ## remove Lean build artifacts
 	@lake clean
 
-.PHONY: help setup build test lab reset test-reset test-solver axioms explainer docs preview clean
+.PHONY: help setup build test lab reset test-reset test-solver test-first-order axioms explainer docs preview clean

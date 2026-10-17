@@ -13,7 +13,7 @@ open scoped Principia.Form
 /-- Truth value of a formula under a valuation `v` of the atoms. -/
 def eval (v : Nat → Bool) : Form → Bool
   | .var n   => v n
-  | .fls     => false
+  | .falsum     => false
   | .imp a b => (!eval v a) || eval v b
   | .and a b => eval v a && eval v b
   | .or a b  => eval v a || eval v b
@@ -34,7 +34,7 @@ tautology-hood. The equivalence `taut?_eq_true_iff` below certifies that this fi
 all valuations, including those represented as arbitrary functions `Nat → Bool`. -/
 def maxVar : Form → Nat
   | .var n   => n + 1
-  | .fls     => 0
+  | .falsum     => 0
   | .imp a b => max (maxVar a) (maxVar b)
   | .and a b => max (maxVar a) (maxVar b)
   | .or a b  => max (maxVar a) (maxVar b)
@@ -109,7 +109,7 @@ theorem eval_eq_of_agree (v w : Nat → Bool) : ∀ (φ : Form) (n : Nat),
   | var i =>
     intro n hb h
     exact h i (by simp only [maxVar] at hb; omega)
-  | fls => intro n hb h; rfl
+  | falsum => intro n hb h; rfl
   | and a b iha ihb =>
     intro n hb h
     simp only [maxVar] at hb

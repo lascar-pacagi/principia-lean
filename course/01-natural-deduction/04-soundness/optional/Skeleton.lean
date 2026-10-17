@@ -6,7 +6,7 @@ open Principia Principia.Form
 open scoped Principia.Form Principia
 namespace Course1.Soundness
 
-theorem consistency : ([] ⊢ Form.fls) → False := by
+theorem consistency : ([] ⊢ Form.falsum) → False := by
   sorry
 
 theorem not_provable_var : ([] ⊢ Form.var 0) → False := by

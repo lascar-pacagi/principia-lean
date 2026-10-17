@@ -9,8 +9,8 @@ proofs. Lessons explain the ideas, exercises give you practice, and Lean checks 
 | Part | What you build and learn |
 |---|---|
 | 0. Foundations | Types, propositions, proof tactics, recursion, and induction |
-| 1. Natural deduction | Seven lessons ending in a complete, certified propositional solver |
-| 2. Resolution | Conjunctive normal form, resolution, and a second verified prover |
+| 1. Natural deduction | Propositional solver, first-order deduction and search, general Henkin completeness |
+| 2. Resolution | Checked unification, automatic clausification, first-order resolution and general completeness |
 | 3. SAT | SAT solving and a verified checker for unsatisfiability certificates |
 | 4. Euclid | Formal proofs of geometric propositions |
 | 5. Gödel | Diagonal arguments, Tarski's theorem, and abstract incompleteness |

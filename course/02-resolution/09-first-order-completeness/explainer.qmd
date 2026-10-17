@@ -1,0 +1,254 @@
+---
+title: "2.9 — General completeness of first-order resolution"
+---
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+## 1. The question: could an unsatisfiable clause set have no refutation?
+
+Soundness rules out refutations of satisfiable inputs. Completeness supplies the other
+direction: every unsatisfiable clause set has a finite refutation. We prove this for arbitrary
+first-order clauses, including function symbols that generate infinitely many terms.
+
+Our proof proceeds contrapositively. If no refutation exists, build a model. This shares the
+shape of Henkin completeness, but clauses need no existential witness construction: their
+variables are already implicitly universal.
+
+## 2. Make the structural rules explicit
+
+The certificate type includes two structural rules in addition to input, substitution,
+resolution, and contraction:
+
+- `weakening` adds disjuncts. From A, deriving A ∨ B is sound; it does not establish B.
+- `tautology l` supplies the universally true clause [l, l.complement].
+
+```lean
+def addAlternative (s : ClauseSet) (l k : Literal)
+    (d : ResolutionDerivation s [l]) : ResolutionDerivation s [l, k] := by
+  exact .weakening d (by simp_all)
+```
+
+These are ordinary structural rules, with checked soundness proofs. They simplify the
+assumption-discharge argument in our completeness proof. The theorem below concerns this
+explicit six-constructor calculus; it does not silently assert completeness for a smaller
+or differently implemented system.
+
+## 3. Treat every substitution instance as a propositional clause
+
+`InstanceSource S c` says that c is some substitution instance of an input clause of S.
+There may be infinitely many such clauses, even when S is finite. For P(x) with a constant
+c and unary f, examples include P(c), P(f(c)), P(f(f(c))), and so on.
+
+Each such instance has an actual first-order derivation: take its input leaf and add the
+recorded substitution node. `resolution_of_propositional` translates a finite resolution
+tree using these instances back into a first-order resolution certificate.
+
+The proof does not require the unifier to return a most-general substitution: instantiation
+is an explicit rule. This avoids assuming an unproved MGU or lifting theorem for our bounded
+unification program. It also means calculus completeness alone is not search completeness.
+
+## 4. Build a consistent Boolean assignment for all instance atoms
+
+A finite resolution tree uses only finitely many source clauses. We build a sequence of
+consistent extensions deciding more and more atoms. The enumeration covers every finite
+term and every atom; it puts no fixed ceiling on function nesting.
+
+The key step discharges a temporary unit assumption. If T together with [l] refutes the
+empty clause, `Propositional.Proof.deduction` gives a proof from T of [l.complement].
+If adding either sign caused a refutation, the two discharged unit proofs would resolve
+to the empty clause already from T. Hence one sign can safely be chosen.
+
+This consistency choice is noncomputable. It constructs a mathematical assignment; it is
+not an algorithm deciding satisfiability of an infinite set of instances.
+
+For an original instance clause, suppose every literal were false in the resulting assignment.
+There are only finitely many literals, so all their complementary unit decisions occur together
+at some finite stage. Resolve against those units one by one: the clause becomes empty.
+That contradicts the stage's consistency. Every instance clause must therefore be satisfied.
+
+## 5. Read the assignment as a first-order term model
+
+Use all finite terms as domain. Interpret functions by forming term trees, and interpret
+a predicate on term objects using the assignment to that exact atom.
+
+An environment maps each variable to a term object. Evaluating an input clause in this model
+is exactly evaluating its substitution instance propositionally. We just proved that every
+such instance is satisfied, so every input clause holds under every environment.
+
+The theorem `model_of_no_refutation` supplies this canonical model. Contrapositively:
+
+```text
+resolution_complete : Unsatisfiable S → Nonempty (ResolutionDerivation S [])
+resolution_iff_unsatisfiable S :
+  Nonempty (ResolutionDerivation S []) ↔ Unsatisfiable S
+```
+
+These are general, kernel-checked first-order results. They concern existence of finite trees,
+not eventual success of the current bounded saturation strategy. That program still returns
+unknown when it finds no refutation. Lesson 2.8 proves the clausifier's general equisatisfiability,
+so a refutation of the generated counterexample clauses certifies the original entailment.
+
+### The complete bridge to natural deduction
+
+For arbitrary Γ and goal, the library now proves:
+
+```text
+deduction_iff_clausal_refutation Γ goal :
+  Nonempty (Derivation Γ goal) ↔
+    Nonempty (ResolutionDerivation
+      (clausify (counterexampleFormula Γ goal)).clauses [])
+```
+
+A natural-deduction proof establishes entailment by soundness. That entailment excludes any
+model of the counterexample formula. Recovery of a model from its generated clauses therefore
+shows those clauses are unsatisfiable; resolution completeness supplies a refutation.
+
+Conversely, a clause refutation excludes all models of those clauses. Any original countermodel
+would expand to one, contradicting the refutation. Hence entailment holds, and natural-deduction
+completeness supplies a derivation. Every link is checked; no clausification hypothesis is left
+for the caller to assume. This is an existence equivalence between proof systems, not a theorem
+that our particular finite searches always find their certificates.
+
+## 6. Prove it
+
+Work in `Skeleton.lean`. These exercises apply the new ideas to statements different from
+the worked examples. Try them before reading the corrections.
+
+```bash
+make lab C=02-resolution/09-first-order-completeness
+```
+
+An unsatisfiable subsystem is included in a larger clause set. Show the larger set has a refutation.
+
+```lean
+theorem refutation_of_unsatisfiable_subsystem (s t : ClauseSet)
+    (included : ∀ c ∈ s, c ∈ t) (h : Unsatisfiable s) :
+    Nonempty (ResolutionDerivation t []) := by
+  sorry
+```
+
+Turn absence of a finite refutation into existence of a first-order model on terms.
+
+```lean
+theorem consistent_source_has_term_model (s : ClauseSet)
+    (h : ¬Nonempty (ResolutionDerivation s [])) :
+    ∃ M : Model Term, SatisfiesClauses M s := by
+  sorry
+```
+
+## 7. Graduated hints
+
+### `refutation_of_unsatisfiable_subsystem`
+
+**First hint.** Any model of t would also model s.
+
+**Next hint.** Establish Unsatisfiable t, then apply resolution_complete.
+
+### `consistent_source_has_term_model`
+
+**First hint.** Use the canonical model from the contrapositive proof.
+
+**Next hint.** The witness is canonicalModel s and its property is model_of_no_refutation h.
+
+## 8. Worked corrections
+
+These exact proofs are also in `Solution.lean`, checked by `make test`.
+
+### `refutation_of_unsatisfiable_subsystem`
+
+```lean
+theorem refutation_of_unsatisfiable_subsystem (s t : ClauseSet)
+    (included : ∀ c ∈ s, c ∈ t) (h : Unsatisfiable s) :
+    Nonempty (ResolutionDerivation t []) := by
+  apply resolution_complete
+  intro D inhabited M ht
+  exact h D inhabited M (fun c hc => ht c (included c hc))
+```
+
+A model satisfying every clause of t satisfies each clause of s by inclusion. The hypothesis rules out that model. General completeness then supplies a finite refutation of t.
+
+### `consistent_source_has_term_model`
+
+```lean
+theorem consistent_source_has_term_model (s : ClauseSet)
+    (h : ¬Nonempty (ResolutionDerivation s [])) :
+    ∃ M : Model Term, SatisfiesClauses M s :=
+  ⟨canonicalModel s, model_of_no_refutation h⟩
+```
+
+canonicalModel interprets functions as term constructors and predicates through the consistent assignment. The model-existence theorem proves that it satisfies every original clause at every environment.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Pending optional proofs are reported separately and do not
+fail completed required work.
+
+Show an arbitrary source containing complementary units is inconsistent.
+
+```lean
+theorem incompatible_units_inconsistent (T : Clause → Prop) (l : Literal)
+    (positive : T [l]) (negative : T [l.complement]) : ¬Propositional.Consistent T := by
+  sorry
+```
+
+*Hint:* Resolve the two available unit clauses and contradict consistency.
+
+Show clause sets with exactly the same models have exactly the same refutability status.
+
+```lean
+theorem semantic_refutability_invariant (s t : ClauseSet)
+    (sameModels : ∀ (D : Type) (_ : Nonempty D) (M : Model D),
+      SatisfiesClauses M s ↔ SatisfiesClauses M t) :
+    Nonempty (ResolutionDerivation s []) ↔ Nonempty (ResolutionDerivation t []) := by
+  sorry
+```
+
+*Hint:* Use the general equivalence on both sides, then transport models in the appropriate direction.
+
+## 10. Optional corrections
+
+These proofs are in `optional/Solution.lean`, included in the checks and exercise reset.
+
+### `incompatible_units_inconsistent`
+
+```lean
+theorem incompatible_units_inconsistent (T : Clause → Prop) (l : Literal)
+    (positive : T [l]) (negative : T [l.complement]) : ¬Propositional.Consistent T := by
+  intro consistent
+  apply consistent
+  exact ⟨by simpa [resolvent] using
+    Propositional.Proof.resolve l (.input positive) (.input negative)⟩
+```
+
+The two input leaves have opposite signs. Resolving their singleton clauses produces the empty clause, which the consistency predicate excludes.
+
+### `semantic_refutability_invariant`
+
+```lean
+theorem semantic_refutability_invariant (s t : ClauseSet)
+    (sameModels : ∀ (D : Type) (_ : Nonempty D) (M : Model D),
+      SatisfiesClauses M s ↔ SatisfiesClauses M t) :
+    Nonempty (ResolutionDerivation s []) ↔ Nonempty (ResolutionDerivation t []) := by
+  rw [resolution_iff_unsatisfiable, resolution_iff_unsatisfiable]
+  constructor
+  · intro hs D inhabited M ht
+    exact hs D inhabited M ((sameModels D inhabited M).mpr ht)
+  · intro ht D inhabited M hs
+    exact ht D inhabited M ((sameModels D inhabited M).mp hs)
+```
+
+General completeness and soundness replace syntactic refutability by unsatisfiability. In each direction, use the sameModels equivalence to translate a purported model into the model forbidden by the hypothesis.
+
+## 11. Conclusion
+
+The explicit resolution calculus is sound and refutation-complete for arbitrary finite first-order clause sets. All substitution instances and the canonical term model establish the general result without assuming MGU completeness of the bounded unifier. Completeness of a calculus, completeness of its search strategy, and correctness of a formula-to-clause compiler are separate claims.
+
+## 12. Going further
+
+- **Next:** Course 3 — SAT and certificate checking.
+- Review the local **Logic and Proof** first-order chapters for the distinction between
+  derivations, interpretations, and proof search. The Lean modules under `Principia/FirstOrder/`
+  contain the constructions and exact checked theorem statements.

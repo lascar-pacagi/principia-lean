@@ -75,7 +75,7 @@ theorem distribute_eval (v) (s1 s2 : Cnf) :
 negation down to the literals (so `¬` never appears as a connective in the output). -/
 def toCnf : Bool → Form → Cnf
   | b, .var n   => [[{var := n, pol := b}]]
-  | b, .fls     => if b then [[]] else []
+  | b, .falsum     => if b then [[]] else []
   | b, .and a c => if b then toCnf true a ++ toCnf true c else distribute (toCnf false a) (toCnf false c)
   | b, .or a c  => if b then distribute (toCnf true a) (toCnf true c) else toCnf false a ++ toCnf false c
   | b, .imp a c => if b then distribute (toCnf false a) (toCnf true c) else toCnf true a ++ toCnf false c
@@ -86,7 +86,7 @@ theorem toCnf_eval (v : Nat → Bool) : ∀ (b : Bool) (φ : Form),
   intro b φ
   induction φ generalizing b with
   | var n => cases b <;> simp [toCnf, Cnf.eval, Clause.eval, Lit.eval, Form.eval]
-  | fls => cases b <;> simp [toCnf, Cnf.eval, Clause.eval, Form.eval]
+  | falsum => cases b <;> simp [toCnf, Cnf.eval, Clause.eval, Form.eval]
   | and a c iha ihc =>
       cases b <;> simp [toCnf, distribute_eval, cnf_eval_append, iha, ihc, Form.eval] <;>
         (cases Form.eval v a <;> cases Form.eval v c <;> rfl)

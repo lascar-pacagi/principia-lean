@@ -178,7 +178,15 @@ complete).
 | 1.5 Initial, fuel-bounded proof search | typed derivations on success; failure can miss valid formulas | soundness of successful results |
 | 1.6 **Completeness (closed propositional case)** | executable validity-to-derivation construction | ✅ Kalmár row proofs and variable elimination |
 | 1.7 **Complete propositional solver** | `solve` / `proveComplete`: a derivation for every tautology, certified invalidity otherwise | ✅ certified finite table, soundness, algorithmic completeness, structural termination |
-| 1.8 *(stretch)* first-order terms, quantifiers, substitution | separate semi-decision procedure | soundness extends; FOL completeness via Henkin remains a stretch |
+| 1.8 First-order syntax | terms, quantifiers, de Bruijn indices, capture-avoiding substitution | executable substitution |
+| 1.9 First-order semantics | arbitrary nonempty domains, models, environments | substitution and instantiation preserve meaning |
+| 1.10 First-order natural deduction | four quantifier rules and fresh-variable discipline | ✅ soundness over arbitrary models |
+| 1.11 First-order proof search | returned derivations, heuristic pools and growing finite stages | ✅ successful results are sound; finite failure means unknown |
+| 1.12 Henkin extensions | consistency, decisions, fresh witnesses, finite stages | ✅ consistent complete witnessed theory |
+| 1.13 General first-order completeness | canonical term model and truth lemma | ✅ `deduction_iff_entails` for arbitrary formulas and finite contexts |
+
+The first-order extension is implemented without built-in equality. General semantic completeness
+is proved. Eventual success of the particular staged search remains separate.
 
 *Reference:* FFL-Foundation (`Classical.soundness`/`.completeness`, full FOL completeness via Henkin);
 Logic and Proof. **Milestone M1.**
@@ -196,7 +204,13 @@ SAT/SMT engine. Reuses Course 1's syntax & semantics.
 | 2.3 The **resolution prover** (saturation / given-clause search) | `#eval prove φ` — a decision procedure (propositional) | |
 | 2.4 **Soundness** `□ ∈ Res*(S) → S unsatisfiable` | — | ✅ resolution preserves satisfiability |
 | 2.5 **Refutation-completeness (propositional)** `S unsat → □ ∈ Res*(S)` | with 2.1 ⇒ verified decision procedure; tie to Course 1: `⊢_ND φ ↔ resolution refutes ¬φ` | ✅ semantic tree / induction on variables |
-| 2.6 *(stretch)* first-order resolution: terms, **unification (mgu)**, the lifting lemma | the prover runs on FOL (refutation-complete, semi-decidable) | soundness extends; **refutation-completeness via Herbrand + lifting = stretch** |
+| 2.6 First-order substitution and checked unification | composition, occurs check, checked candidate substitutions | ✅ every accepted unifier solves its original equations |
+| 2.7 First-order resolution | renaming apart, factoring, saturation, returned refutation trees | ✅ substitution/resolution/contraction soundness and refutation soundness |
+| 2.8 Automatic clausification | NNF, Skolem functions, fresh variables, distributive CNF | ✅ general NNF/Skolem/CNF equisatisfiability; same-domain model expansion and recovery; direct original-goal certification |
+| 2.9 General first-order resolution completeness | all substitution instances, consistent assignment, canonical term model | ✅ `resolution_iff_unsatisfiable`, with explicit weakening and tautology rules |
+
+The compiler handles arbitrary formulas with a proved general equisatisfiability theorem.
+MGU completeness and eventual success of the bounded searches remain separate; finite failures mean unknown.
 
 *Reference:* classic resolution metatheory; unification implementations in Lean; the SAT connection
 below. **Milestone M2.**
@@ -272,9 +286,9 @@ Paulson (Isabelle/HF); Popescu–Traytel (the abstract pattern); Yanofsky/Lawver
 
 ## 7. Honest difficulty flags
 
-- **ND FOL completeness** (1.8): hard (Henkin) — a clearly-marked stretch, not a core deliverable.
-- **Resolution FOL refutation-completeness** (2.6): hard (Herbrand + lifting lemma) — a stretch; the
-  FOL *prover itself* (with unification) is in scope, the completeness proof for it is the reach.
+- **ND FOL completeness** (1.12–1.13): implemented via Henkin and a general truth lemma.
+- **Resolution FOL refutation-completeness** (2.9): implemented for the explicit six-rule calculus
+  via all instances and a term model. Model expansion and recovery are proved; completeness of the particular bounded searches remains open.
 - **Full CDCL verification**: infeasible at course scope — the **LRAT checker** is the right target.
 - **Euclid I.47**: a stretch; I.1/I.4/I.5 are solidly tractable.
 - **Our own Gödel arithmetization** (5.7): very hard — we prove the **abstract** theorem (5.2–5.6) and

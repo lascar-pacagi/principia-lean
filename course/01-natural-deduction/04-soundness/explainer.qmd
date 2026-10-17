@@ -105,7 +105,7 @@ The helper is about truth under one fixed valuation. It doesn't construct a deri
 
 ### The classical rule still has a Boolean soundness proof
 
-`byContra_eval` says that if truth of `∼a` would force `fls` to evaluate to true, then a
+`byContra_eval` says that if truth of `∼a` would force `falsum` to evaluate to true, then a
 evaluates to true. Check its two possible values: if a is true, the conclusion holds; if a
 is false, its negation is true and the premise would imply `false = true`, an impossibility.
 This is a finite Boolean argument. Although it validates our system's classical `raa` rule,
@@ -260,7 +260,7 @@ Use `optional/Skeleton.lean`; the same lab command checks it separately. These e
 their own verified answer key in `optional/Solution.lean`.
 
 ```lean
-theorem consistency : ([] ⊢ Form.fls) → False := by
+theorem consistency : ([] ⊢ Form.falsum) → False := by
   sorry
 ```
 
@@ -283,7 +283,7 @@ and what result must be built. You may reuse the proved library results from thi
 ### `consistency`
 
 ```lean
-theorem consistency : ([] ⊢ Form.fls) → False := by
+theorem consistency : ([] ⊢ Form.falsum) → False := by
   intro d
   have h := tautology_of_proof d (fun _ => false)
   simp [eval] at h

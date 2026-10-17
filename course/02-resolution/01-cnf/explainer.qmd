@@ -50,7 +50,7 @@ false`. Carrying `b` down means `¬` never appears as a connective — it only f
 ```lean
 def toCnf : Bool → Form → Cnf
   | b, .var n   => [[{var := n, pol := b}]]              -- a single literal, polarity = b
-  | b, .fls     => if b then [[]] else []                 -- ⊥ → □ (false);  ¬⊥ = ⊤ → [] (true)
+  | b, .falsum     => if b then [[]] else []                 -- ⊥ → □ (false);  ¬⊥ = ⊤ → [] (true)
   | b, .and a c => if b then toCnf true a ++ toCnf true c  -- a∧c: append the clause sets
                         else distribute (toCnf false a) (toCnf false c)   -- ¬(a∧c) = ¬a ∨ ¬c
   | b, .or a c  => if b then distribute (toCnf true a) (toCnf true c)      -- a∨c: distribute
@@ -97,7 +97,7 @@ Try cold; §6 has hints.
 ## 6. Hints for the skeleton
 
 **1 `toCnf_eval`.** *Nudge:* `intro b φ; induction φ generalizing b` (you need the IH at *both*
-polarities). The `var`/`fls` cases are `cases b <;> simp [toCnf, …, Form.eval]`. For each connective,
+polarities). The `var`/`falsum` cases are `cases b <;> simp [toCnf, …, Form.eval]`. For each connective,
 `cases b`, then `simp` with `[toCnf, distribute_eval, cnf_eval_append, iha, ihc, Form.eval]`, and finish
 the leftover Boolean identity with `cases Form.eval v a <;> cases Form.eval v c <;> rfl`. *More:* see the
 shape in §3 — every branch is one `simp` plus a four-row `cases`.

@@ -58,7 +58,7 @@ def imp_of_right {Γ a b} (h : Γ ⊢ b) : Γ ⊢ (a ⇒ b) := .impI (weaken (su
 def notImp {Γ a b} (ha : Γ ⊢ a) (hb : Γ ⊢ ∼b) : Γ ⊢ ∼(a ⇒ b) :=
   .impI (.impE (a := b) (weaken (sub_cons _ _) hb)
     (.impE (a := a) (.ax (a := a ⇒ b) (by simp)) (weaken (sub_cons _ _) ha)))
-def notFls {Γ : List Form} : Γ ⊢ ∼Form.fls := .impI (.ax (a := Form.fls) (by simp))
+def notFls {Γ : List Form} : Γ ⊢ ∼Form.falsum := .impI (.ax (a := Form.falsum) (by simp))
 
 /-- Excluded middle, in any context. -/
 def dEM (Γ : List Form) (a : Form) : Γ ⊢ (a ⋎ ∼a) :=
@@ -105,7 +105,7 @@ def kalmar (v : Nat → Bool) (n : Nat) (φ : Form) : φ.maxVar ≤ n →
       intro hb; simp only [Form.maxVar] at hb; have hi : i < n := by omega
       exact ⟨fun he => by simp only [eval] at he; exact .ax (lit_mem_pos v i n he hi),
              fun he => by simp only [eval] at he; exact .ax (lit_mem_neg v i n he hi)⟩
-  | .fls => by intro _; exact ⟨fun he => by simp [eval] at he, fun _ => notFls⟩
+  | .falsum => by intro _; exact ⟨fun he => by simp [eval] at he, fun _ => notFls⟩
   | .and a b => by
       have iha := kalmar v n a
       have ihb := kalmar v n b

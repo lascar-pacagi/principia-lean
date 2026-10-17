@@ -44,6 +44,7 @@ A verified library is a tower of definitions and the theorems that connect them.
 | **Logic** | the object language | `Form` (formulas), `eval`, `Tautology`/`⊨`, a runnable `taut?` | `01-natural-deduction/{01,02}` |
 | **NatDed** | a proof *system* + its metatheory | `Deriv` (`⊢`), soundness, a prover, completeness | `01-natural-deduction/{03–07}` |
 | **Resolution** | a refutation calculus | CNF, `resolvent`, `Refut`, soundness, a decision procedure | `02-resolution/{01–05}` |
+| **FirstOrder** | quantified syntax, models, and proof search | capture-avoiding substitution, natural deduction, checked unification, resolution | `01-natural-deduction/{08–13}`, `02-resolution/{06–09}` |
 | **Sat** | practical satisfiability | `assign`, DPLL, CDCL, a verified LRAT checker | `03-sat/{01–04}` |
 | **Euclid** | synthetic geometry | `EuclidPlane` axioms, Prop I.1, the five-segment (SAS) axiom | `04-euclid/{01,02}` |
 | **Goedel** | abstract incompleteness | the diagonal lemma, Tarski, the first incompleteness theorem | `05-goedel/{01–03}` |
@@ -76,16 +77,24 @@ capability.
 - **Course 0 — Foundations** (`00-foundations/00–04`). Lean and proof from zero: a first `theorem`, `Nat`
   induction, the connectives via intro/elim, inductive types + recursion (a baby soundness theorem,
   `eval_swap`), and natural deduction shown *as* Lean's own tactics — the bridge into Course 1.
-- **Course 1 — Natural deduction** (`01-natural-deduction/01–07`). The first capstone: define formulas
+- **Course 1 — Natural deduction** (`01-natural-deduction/01–13`). The first capstone: define formulas
   and their truth (`Logic`), the derivation system `⊢` (`Deriv`, with classical RAA), prove **soundness**
   (`⊢ ⇒ ⊨`), build a first limited search, then prove **completeness**
   by Kalmár's elementary method — closing the loop `provable_iff_tautology : Nonempty (⊢ φ) ↔ ⊨ φ`.
   Finish with an executable complete propositional solver: certified truth tables decide the
   answer, and the executable Kalmár construction returns a derivation for each tautology.
-- **Course 2 — Resolution** (`02-resolution/01–05`). A second, different prover: convert to CNF (with
+  Lessons 1.8–1.11 then add first-order terms, arbitrary-domain semantics, sound quantifier
+  rules, and bounded proof search. A failed first-order search means unknown; full first-order
+  completeness is proved in 1.12–1.13 using Henkin extensions and a canonical term model.
+- **Course 2 — Resolution** (`02-resolution/01–09`). A second, different prover: convert to CNF (with
   `Tautology φ ↔ (toCnf false φ).Unsat`), the resolution rule and `Refut` (intrinsically-typed
   refutations), a fuel-bounded saturation prover, and **soundness** (`Refut S [] ⇒ S.Unsat`). Full
   refutation-completeness over list-clauses is flagged as research-grade and scoped.
+  Lessons 2.6–2.7 implement checked first-order unification and resolution with freshening
+  and factoring. They accept clauses directly and prove returned refutations sound;
+  2.8 implements automatic clausification; 2.9 proves general resolution completeness.
+  Model expansion and recovery prove the entire clausifier equisatisfiable. Its returned
+  resolution certificate directly establishes the original entailment.
 - **Course 3 — SAT** (`03-sat/01–04`). The practical workhorse, both sides of a trustworthy pipeline:
   `assign` + satisfiability preservation, **DPLL** with **model soundness**, a **CDCL** solver (clause
   learning + backjumping; unverified but differential-tested against DPLL), and the keystone — a
@@ -118,20 +127,30 @@ tower*; the path tells you *where it lives on disk*.
 | 09 | `01-natural-deduction/05-prover` | `NatDed/Prover` | typed proof search (`prove?`) |
 | 10 | `01-natural-deduction/06-completeness` | `NatDed/Kalmar`,`Completeness` | **`provable_iff_tautology`** |
 | 11 | `01-natural-deduction/07-complete-solver` | `NatDed/Solver` | complete, terminating `solve` / `proveComplete` |
-| 12 | `02-resolution/01-cnf` | `Resolution/Cnf` | CNF; `taut_iff_cnf_unsat` |
-| 13 | `02-resolution/02-rule` | `Resolution/Rule` | `resolvent`, `Refut` |
-| 14 | `02-resolution/03-prover` | `Resolution/Prover` | fuel-bounded saturation |
-| 15 | `02-resolution/04-soundness` | `Resolution/Soundness` | **`refut_unsat`** |
-| 16 | `02-resolution/05-completeness` | `Resolution/Completeness` | decision procedure; the scoped keystone |
-| 17 | `03-sat/01-assign` | `Sat/Basic` | `assign`; `sat_of_assign` |
-| 18 | `03-sat/02-dpll` | `Sat/Dpll` | DPLL; **`dpll_sound`** |
-| 19 | `03-sat/03-lrat` | `Sat/Lrat` | **`check_unsat`** (verified UNSAT) |
-| 20 | `03-sat/04-cdcl` | `Sat/Cdcl` | CDCL (learning + backjumping) |
-| 21 | `04-euclid/01-equilateral` | `Euclid/Basic` | `EuclidPlane`; **`prop_I1`** |
-| 22 | `04-euclid/02-betweenness` | `Euclid/Betweenness` | five-segment (SAS); **`segment_add`** |
-| 23 | `05-goedel/01-diagonal` | `Goedel/Diagonal` | **`lawvere`**, `cantor`, `no_self_neg` |
-| 24 | `05-goedel/02-tarski` | `Goedel/Tarski` | **`tarski`** (truth undefinable) |
-| 25 | `05-goedel/03-incompleteness` | `Goedel/Incompleteness` | **`incompleteness`** (Gödel I) |
+| 12 | `01-natural-deduction/08-first-order-syntax` | `FirstOrder/Syntax` | terms and capture-avoiding substitution |
+| 13 | `01-natural-deduction/09-first-order-semantics` | `FirstOrder/Semantics` | models and substitution semantics |
+| 14 | `01-natural-deduction/10-first-order-deduction` | `FirstOrder/NaturalDeduction` | quantifier rules and soundness |
+| 15 | `01-natural-deduction/11-first-order-search` | `FirstOrder/NaturalDeductionSearch` | proof-producing bounded searches |
+| 16 | `01-natural-deduction/12-henkin` | `FirstOrder/Henkin` | consistent witnessed extension |
+| 17 | `01-natural-deduction/13-first-order-completeness` | `FirstOrder/NaturalDeductionCompleteness` | **`deduction_iff_entails`** |
+| 18 | `02-resolution/01-cnf` | `Resolution/Cnf` | CNF; `taut_iff_cnf_unsat` |
+| 19 | `02-resolution/02-rule` | `Resolution/Rule` | `resolvent`, `Refut` |
+| 20 | `02-resolution/03-prover` | `Resolution/Prover` | fuel-bounded saturation |
+| 21 | `02-resolution/04-soundness` | `Resolution/Soundness` | **`refut_unsat`** |
+| 22 | `02-resolution/05-completeness` | `Resolution/Completeness` | decision procedure; the scoped keystone |
+| 23 | `02-resolution/06-unification` | `FirstOrder/Unification` | checked candidate unifiers |
+| 24 | `02-resolution/07-first-order-resolution` | `FirstOrder/ResolutionSearch` | freshening, factoring, saturation |
+| 25 | `02-resolution/08-clausification` | `FirstOrder/Clausification` | automatic NNF, Skolemization, CNF; checked original-goal frontend |
+| 26 | `02-resolution/09-first-order-completeness` | `FirstOrder/ResolutionCompleteness` | **`resolution_iff_unsatisfiable`** |
+| 27 | `03-sat/01-assign` | `Sat/Basic` | `assign`; `sat_of_assign` |
+| 28 | `03-sat/02-dpll` | `Sat/Dpll` | DPLL; **`dpll_sound`** |
+| 29 | `03-sat/03-lrat` | `Sat/Lrat` | **`check_unsat`** (verified UNSAT) |
+| 30 | `03-sat/04-cdcl` | `Sat/Cdcl` | CDCL (learning + backjumping) |
+| 31 | `04-euclid/01-equilateral` | `Euclid/Basic` | `EuclidPlane`; **`prop_I1`** |
+| 32 | `04-euclid/02-betweenness` | `Euclid/Betweenness` | five-segment (SAS); **`segment_add`** |
+| 33 | `05-goedel/01-diagonal` | `Goedel/Diagonal` | **`lawvere`**, `cantor`, `no_self_neg` |
+| 34 | `05-goedel/02-tarski` | `Goedel/Tarski` | **`tarski`** (truth undefinable) |
+| 35 | `05-goedel/03-incompleteness` | `Goedel/Incompleteness` | **`incompleteness`** (Gödel I) |
 
 ## 5. How a concept is built (and how to run it)
 
@@ -203,10 +222,10 @@ honest scoping is visible in the source, not hidden in an `axiom`.
   is a complete, machine-checked proof of each theorem.
 - **The axiom auditor.** `make axioms` greps the tree for stray `sorry`/`axiom` and scans `#print axioms`
   of the keystones — so "verified" means verified *all the way down*, with the trusted base spelled out.
-- **Computation & differential checks.** Provers and solvers are *run* (`#eval`/`#guard`), and the one
-  unverified component (CDCL) is differential-tested against a verified reference.
-- **Honest scope, in the open.** Where a full result is research-grade — resolution refutation-completeness,
-  the general SAS/I.5, Gödel's arithmetisation — we deliver the tractable core and *flag* the gap as a
+- **Computation & differential checks.** Provers and solvers are *run* (`#eval`/`#guard`), and the
+  CDCL component is differential-tested against a verified reference. The verified Skolem compiler is
+  additionally tested on finite models, including alternating quantifiers and free variables.
+- **Honest scope, in the open.** Where a full result remains open — eventual success of our particular first-order searches, general SAS/I.5, Gödel's arithmetisation — we deliver the tractable core and *flag* the gap as a
   named hypothesis, never as a silent `axiom` or a weakened statement.
 
 **The shape of the whole thing:** one small logical spine; two provers and a SAT toolkit built on it;

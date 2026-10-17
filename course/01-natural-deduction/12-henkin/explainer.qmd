@@ -1,0 +1,231 @@
+---
+title: "1.12 — Consistency, fresh witnesses, and Henkin extensions"
+---
+
+```lean
+import Principia.FirstOrder
+open Principia.FirstOrder
+```
+
+## 1. The question: how can the absence of a proof give us a model?
+
+Soundness starts with a tree and follows its rules. Completeness must go the other way.
+Given a claim with no derivation, we want an interpretation where its assumptions hold
+and its conclusion fails. We cannot find such an interpretation by checking a fixed list
+of domains: functions may generate infinitely many objects.
+
+Henkin's construction instead builds a theory with enough decisions and witnesses that
+we can read a model from it. This lesson develops the construction; the next proves its
+truth lemma and uses it to obtain completeness.
+
+## 2. Consistency is a precise statement about derivations
+
+`Henkin.Provable Γ a` abbreviates `Nonempty (Derivation Γ a)`. It says that at least one
+finite derivation tree exists. `Henkin.Consistent Γ` means there is no derivation of falsum
+from Γ. It does not mean that our current search happened to return none.
+
+For example, [P, ¬P] is inconsistent: implication elimination applied to the two assumptions
+constructs falsum. A limited search might miss that tree, but the definition concerns all trees.
+
+We use explicit structural weakening to keep old proofs when adding assumptions:
+
+```lean
+def keepOldProof (a b : Formula) (d : Derivation [a] a) : Derivation [b, a] a := by
+  exact Derivation.weakening d (by simp_all)
+```
+
+Its second argument proves inclusion of the old context in the new one. It supplies no
+proof of b and does not claim that b follows from a. It says that a proof already using
+only [a] remains available if [b,a] is our context.
+
+## 3. Decide a claim without destroying consistency
+
+Suppose Γ is consistent. At least one of Γ with a, or Γ with ¬a, remains consistent.
+If both were inconsistent, the first contradiction would give a proof of ¬a from Γ, and
+the second would give a proof of ¬¬a. Together they would refute Γ itself.
+
+`Henkin.consistent_choice` proves this argument. `Henkin.choose Γ a` keeps the positive
+extension when it is consistent and otherwise keeps the negative extension. This choice
+is **noncomputable**: Lean's classical choice supports the mathematical construction;
+we are not implementing an algorithm that decides consistency.
+
+A complete theory here means it decides each claim or its negation. It does not mean
+it contains a contradiction, and it is not yet a completeness theorem about our proof system.
+
+## 4. A true existential needs a witness
+
+Decisions alone are insufficient for a term model. If ∃x P(x) is in the theory, an object
+must realize it. When the positive decision is existential, our construction also adds
+an instance at a fresh variable, used as a new parameter.
+
+Consider Γ containing P(v₀), and an existential body referring to a bound x. Using v₀ as
+witness could impose an unjustified extra condition on the existing object. We choose an
+index outside the free-variable support of the whole current context and quantified formula.
+
+```lean
+#eval (Formula.universal (.predicate 0 [.variable 1, .variable 0])).support
+#eval freshIndex [.predicate 0 [.variable 0], .predicate 1 [.variable 3]]
+```
+
+The first output is [0]: the inner bound reference is removed, while the outer free reference
+is renumbered. The second output is 4, unused by either assumption. `freshIndex_fresh` proves
+this freshness property for every finite context.
+
+The library provides `universalIntroFresh` and `existentialElimFresh`, the usual quantifier
+rules written with a named fresh index. Their types require proofs of freshness; their soundness
+is checked over arbitrary models. They complement the shifting versions from 1.10.
+
+For witness extension, suppose adding P(v₄) made the context inconsistent. Existential
+elimination could use that contradictory branch with the existing ∃x P(x), contradicting
+consistency of the old context. Hence a fresh witness preserves consistency.
+
+## 5. Finite stages and the eventual theory
+
+The enumeration visits every formula. Each stage makes finitely many decisions, adds the
+needed fresh witnesses, and retains all earlier assumptions. `Henkin.stage_consistent` proves
+by induction that each stage remains consistent.
+
+```text
+Γ₀ ⊆ Γ₁ ⊆ Γ₂ ⊆ ...
+Theory Γ a means: there is a stage n with a derivation of a from Γₙ.
+```
+
+This definition matters: a proof uses a finite context at a particular stage. If a and a → b
+are proved at different stages m and n, both proofs remain available at stage max(m,n).
+We can apply implication elimination there. `Henkin.common` formalizes that shared-stage step.
+
+No fixed stage decides all formulas. Nevertheless each formula eventually receives a decision,
+and every existential in the resulting theory has a term instance in it. The general theorems
+are `theory_decides`, `theory_consistent`, and `theory_witness`.
+
+## 6. Prove it
+
+Work in `Skeleton.lean`. These exercises apply the new ideas to statements different from
+the worked examples. Try them before reading the corrections.
+
+```bash
+make lab C=01-natural-deduction/12-henkin
+```
+
+Show that deleting available assumptions preserves consistency.
+
+```lean
+theorem consistent_subcontext (Γ Δ : List Formula) (h : Henkin.Consistent Δ)
+    (included : ∀ a ∈ Γ, a ∈ Δ) : Henkin.Consistent Γ := by
+  sorry
+```
+
+Two claims are proved somewhere in the eventual theory. Construct their conjunction in reversed order.
+
+```lean
+theorem theory_pair_reverse (Γ : List Formula) (a b : Formula)
+    (ha : Henkin.Theory Γ a) (hb : Henkin.Theory Γ b) :
+    Henkin.Theory Γ (.conjunction b a) := by
+  sorry
+```
+
+## 7. Graduated hints
+
+### `consistent_subcontext`
+
+**First hint.** A contradiction using fewer assumptions can be reused with more assumptions.
+
+**Next hint.** Apply Henkin.weaken to the alleged proof of falsum.
+
+### `theory_pair_reverse`
+
+**First hint.** Move both derivations to one stage first.
+
+**Next hint.** Henkin.common supplies a stage and two Nonempty derivations; construct the reversed conjunction there.
+
+## 8. Worked corrections
+
+These exact proofs are also in `Solution.lean`, checked by `make test`.
+
+### `consistent_subcontext`
+
+```lean
+theorem consistent_subcontext (Γ Δ : List Formula) (h : Henkin.Consistent Δ)
+    (included : ∀ a ∈ Γ, a ∈ Δ) : Henkin.Consistent Γ := by
+  intro proofOfFalse
+  exact h (Henkin.weaken included proofOfFalse)
+```
+
+Weakening transports a hypothetical contradiction from Γ to Δ. The consistency hypothesis forbids it. This proves a fact about all derivations, regardless of a search budget.
+
+### `theory_pair_reverse`
+
+```lean
+theorem theory_pair_reverse (Γ : List Formula) (a b : Formula)
+    (ha : Henkin.Theory Γ a) (hb : Henkin.Theory Γ b) :
+    Henkin.Theory Γ (.conjunction b a) := by
+  obtain ⟨n, ⟨proofA⟩, ⟨proofB⟩⟩ := Henkin.common ha hb
+  exact ⟨n, ⟨.conjunctionIntro proofB proofA⟩⟩
+```
+
+The original proofs may occur at different stages. common first enlarges their contexts to the same stage. The conjunction constructor records the two actual trees in the requested order.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`. Pending optional proofs are reported separately and do not
+fail completed required work.
+
+Show a consistent eventual theory cannot prove both a formula and its negation.
+
+```lean
+theorem no_both_in_theory (Γ : List Formula) (hΓ : Henkin.Consistent Γ) (a : Formula) :
+    ¬(Henkin.Theory Γ a ∧ Henkin.Theory Γ a.negation) := by
+  sorry
+```
+
+*Hint:* Use the negation equivalence for a consistent Henkin theory.
+
+From an existential conjunction in the theory, obtain a term witnessing its second part.
+
+```lean
+theorem witnessed_second_part (Γ : List Formula) (hΓ : Henkin.Consistent Γ)
+    (a b : Formula) (h : Henkin.Theory Γ (.existential (.conjunction a b))) :
+    ∃ t, Henkin.Theory Γ (b.instantiate t) := by
+  sorry
+```
+
+*Hint:* Obtain the existential instance, then project its second conjunct in the theory.
+
+## 10. Optional corrections
+
+These proofs are in `optional/Solution.lean`, included in the checks and exercise reset.
+
+### `no_both_in_theory`
+
+```lean
+theorem no_both_in_theory (Γ : List Formula) (hΓ : Henkin.Consistent Γ) (a : Formula) :
+    ¬(Henkin.Theory Γ a ∧ Henkin.Theory Γ a.negation) := by
+  intro ⟨positive, negative⟩
+  exact (Henkin.theory_negation hΓ a).mp negative positive
+```
+
+The theory negation lemma turns membership of the negation into nonmembership of the positive claim. Applying it to the positive evidence gives the contradiction.
+
+### `witnessed_second_part`
+
+```lean
+theorem witnessed_second_part (Γ : List Formula) (hΓ : Henkin.Consistent Γ)
+    (a b : Formula) (h : Henkin.Theory Γ (.existential (.conjunction a b))) :
+    ∃ t, Henkin.Theory Γ (b.instantiate t) := by
+  obtain ⟨t, ht⟩ := Henkin.theory_witness hΓ h
+  have pair : Henkin.Theory Γ (.conjunction (a.instantiate t) (b.instantiate t)) := ht
+  exact ⟨t, (Henkin.theory_conjunction _ _).mp pair |>.2⟩
+```
+
+The witness property yields an instance of the conjunction. Instantiation commutes with conjunction by definition. The theory conjunction equivalence gives its second component at the same witness.
+
+## 11. Conclusion
+
+A Henkin extension preserves consistency, decides every formula eventually, and supplies witnesses. Its stages are finite; its eventual theory is not produced by an executable consistency decider. Freshness and a common finite stage justify the proof manipulations used in the construction.
+
+## 12. Going further
+
+- **Next:** 1.13 — General first-order completeness.
+- Review the local **Logic and Proof** first-order chapters for the distinction between
+  derivations, interpretations, and proof search. The Lean modules under `Principia/FirstOrder/`
+  contain the constructions and exact checked theorem statements.
