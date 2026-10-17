@@ -98,16 +98,17 @@ theorem lit_mem_neg (v) (i n) (hv : v i = false) (h : i < n) : ∼(Form.var i) �
 
 For every `φ` (with all atoms `< n`), the literal context `litCtx v n` proves `φ` when `v` makes it
 true, and `∼φ` when `v` makes it false. By induction on `φ`, using the derived rules above. -/
-noncomputable def kalmar (v : Nat → Bool) (n : Nat) : ∀ (φ : Form), φ.maxVar ≤ n →
-    (eval v φ = true → litCtx v n ⊢ φ) × (eval v φ = false → litCtx v n ⊢ ∼φ) := by
-  intro φ
-  induction φ with
-  | var i =>
+def kalmar (v : Nat → Bool) (n : Nat) (φ : Form) : φ.maxVar ≤ n →
+    (eval v φ = true → litCtx v n ⊢ φ) × (eval v φ = false → litCtx v n ⊢ ∼φ) :=
+  match φ with
+  | .var i => by
       intro hb; simp only [Form.maxVar] at hb; have hi : i < n := by omega
       exact ⟨fun he => by simp only [eval] at he; exact .ax (lit_mem_pos v i n he hi),
              fun he => by simp only [eval] at he; exact .ax (lit_mem_neg v i n he hi)⟩
-  | fls => intro _; exact ⟨fun he => by simp [eval] at he, fun _ => notFls⟩
-  | and a b iha ihb =>
+  | .fls => by intro _; exact ⟨fun he => by simp [eval] at he, fun _ => notFls⟩
+  | .and a b => by
+      have iha := kalmar v n a
+      have ihb := kalmar v n b
       intro hb; simp only [Form.maxVar] at hb
       have ca := iha (by omega); have cb := ihb (by omega)
       refine ⟨fun he => ?_, fun he => ?_⟩
@@ -121,7 +122,9 @@ noncomputable def kalmar (v : Nat → Bool) (n : Nat) : ∀ (φ : Form), φ.maxV
         cases hva : eval v a with
         | false => exact notAnd_left (ca.2 hva)
         | true => rw [hva] at he; simp at he; exact notAnd_right (cb.2 he)
-  | or a b iha ihb =>
+  | .or a b => by
+      have iha := kalmar v n a
+      have ihb := kalmar v n b
       intro hb; simp only [Form.maxVar] at hb
       have ca := iha (by omega); have cb := ihb (by omega)
       refine ⟨fun he => ?_, fun he => ?_⟩
@@ -133,7 +136,9 @@ noncomputable def kalmar (v : Nat → Bool) (n : Nat) : ∀ (φ : Form), φ.maxV
         cases hva : eval v a with
         | true => rw [hva] at he; simp at he
         | false => rw [hva] at he; simp at he; exact notOr (ca.2 hva) (cb.2 he)
-  | imp a b iha ihb =>
+  | .imp a b => by
+      have iha := kalmar v n a
+      have ihb := kalmar v n b
       intro hb; simp only [Form.maxVar] at hb
       have ca := iha (by omega); have cb := ihb (by omega)
       refine ⟨fun he => ?_, fun he => ?_⟩
@@ -168,7 +173,7 @@ theorem lit_upd_false (v : Nat → Bool) (n : Nat) : lit (upd v n false) n = ∼
 
 /-- If a goal is provable under *every* `n`-atom literal context, it's provable from `[]`:
     eliminate atom `n` with `byCasesD`, recurse. -/
-noncomputable def elim : ∀ (n : Nat) (φ : Form), (∀ v, litCtx v n ⊢ φ) → ([] ⊢ φ)
+def elim : ∀ (n : Nat) (φ : Form), (∀ v, litCtx v n ⊢ φ) → ([] ⊢ φ)
   | 0,     _, h => h (fun _ => false)
   | n + 1, φ, h =>
     elim n φ (fun v => by

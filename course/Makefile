@@ -20,6 +20,7 @@ test: build  ## build the library + kernel-check every Solution.lean (always GRE
 	if [ -z "$$files" ]; then echo "(no Solution.lean yet)"; else \
 	  for f in $$files; do echo "  lean  $$f"; lake env lean "$$f"; done; fi; \
 	echo "✓ all solutions kernel-certified"
+	@lake env lean tooling/test_complete_solver.lean
 
 lab: build  ## check required exercises + report optional progress: make lab C=<dir>
 	@test -n "$(C)" || { echo "usage: make lab C=<concept-dir>  (e.g. 00-foundations/00-setup)"; exit 2; }
@@ -27,6 +28,9 @@ lab: build  ## check required exercises + report optional progress: make lab C=<
 
 reset:  ## reset exercises to sorry (backup saved); optional C=<dir> or DRY_RUN=1
 	@python3 tooling/reset_exercises.py $(if $(C),--concept "$(C)",) $(if $(filter 1,$(DRY_RUN)),--dry-run,)
+
+test-solver: build  ## exercise the complete propositional solver and generated proofs
+	@lake env lean tooling/test_complete_solver.lean
 
 test-reset:  ## check the exercise reset tool on temporary copies
 	@python3 -m unittest discover -s tooling -p 'test_reset_exercises.py'
@@ -47,4 +51,4 @@ preview:  ## live-preview the docs
 clean:  ## remove Lean build artifacts
 	@lake clean
 
-.PHONY: help setup build test lab reset test-reset axioms explainer docs preview clean
+.PHONY: help setup build test lab reset test-reset test-solver axioms explainer docs preview clean

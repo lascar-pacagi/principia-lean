@@ -1,28 +1,27 @@
-# 05-prover — a proof search that's correct by construction
+# 1.5 — A first proof search, and its limits
 
-**Objective.** Write a **prover**: a function that *searches* for natural-deduction derivations, ending
-the by-hand misery of slice 1.3. Because it returns a **typed** `Deriv`, anything it finds is correct by
-construction — you prove `prove_sound` (success ⟹ valid) in a couple of lines, reading the certificate
-off the type. This is **slice 1.5**; code graduates into `Principia.NatDed.Prover`.
-
-**Prerequisites.** Slices 1.3 (`Deriv`) and 1.4 (`soundness`, `tautology_of_proof`).
-
-**The rung.** Single rung — the search (`assumption?`, `prove?`, `prove`) is *given*; you prove the two
-correctness theorems `prove_sound` and `prove_tautology`.
-
-**Honest scope.** This prover applies only *introduction* rules + the assumption rule, so it's
-**incomplete**: its **yes is always right** (that's `prove_sound`), but a **no** just means this search
-gave up — e.g. it misses `(φ ⋏ ψ) ⇒ φ`, which needs ∧-elimination. *Every* valid formula nonetheless has
-a derivation — that's **completeness**, slice 1.6.
-
-## Definition of done
-
-- [ ] `make lab C=01-natural-deduction/05-prover` goes red → green.
-- [ ] `make test` stays green; `make axioms` clean.
-
-## Run
+Read the explainer for step-by-step examples and proof states. Teaching examples have different
+statements from the exercises. Supporting definitions are supplied in `Skeleton.lean`; full
+corrections appear after the hints and in the verified answer keys.
 
 ```bash
 make lab C=01-natural-deduction/05-prover
+make test
+make axioms
 make explainer C=01-natural-deduction/05-prover
+make reset C=01-natural-deduction/05-prover DRY_RUN=1
 ```
+
+Required exercises determine the lab exit status. Optional exercises have their own skeleton
+and solution under `optional/` and a separate pending status. Reset supports both sets and
+saves backups before replacing completed bodies.
+
+## Definition of done
+
+- [ ] Required exercises pass without placeholders.
+- [ ] Read the correction after trying, and explain each intermediate goal and hypothesis.
+- [ ] `make test` and `make axioms` pass.
+- [ ] Optional: complete the additional exercises.
+
+Course 1 progresses from formulas and valuations to derivations, soundness, limited search,
+executable completeness, and a complete terminating propositional solver in lesson 1.7.

@@ -4,6 +4,8 @@
 `make test` kernel-checks this; `make axioms` audits the keystones. This slice's code graduates into
 `Principia.Logic.Syntax`. Read to understand *why*, not to copy.
 -/
+set_option warningAsError true
+
 namespace Principia
 
 inductive Form where
@@ -35,7 +37,18 @@ scoped notation:max "⊥" => Form.fls
 
 -- induction over all five constructors; each case is `1 ≤ (something ≥ 1)`, which `omega` closes.
 theorem size_pos (φ : Form) : 1 ≤ φ.size := by
-  induction φ <;> simp only [size] <;> omega
+  induction φ with
+  | var i => exact Nat.le_refl 1
+  | fls => exact Nat.le_refl 1
+  | imp a b iha ihb =>
+    simp only [size]
+    omega
+  | and a b iha ihb =>
+    simp only [size]
+    omega
+  | or a b iha ihb =>
+    simp only [size]
+    omega
 
 -- `∼φ = φ ⇒ ⊥`, so `size = 1 + size φ + size ⊥ = size φ + 2`; just unfold and do the arithmetic.
 theorem size_neg (φ : Form) : (∼φ).size = φ.size + 2 := by

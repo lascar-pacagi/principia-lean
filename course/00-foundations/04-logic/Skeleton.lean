@@ -1,31 +1,63 @@
 /-!
-# 04-logic — Skeleton  (THIS IS YOUR FILE)
+# 04-logic — Your exercises
 
-Four theorems that are true *classically* but NOT provable by the constructive rules of `02-propositions`
-alone. You'll need Lean's classical tools — `Classical.em` and `Classical.byContradiction`.
-(`by_contra` is a Mathlib tactic and is NOT available here; use `Classical.byContradiction`.)
-
-Run:  make lab C=00-foundations/04-logic
-Try each cold. Stuck? See §6 "Prove it" and §7 "Hints for the skeleton" in `explainer.qmd`.
+Run: make lab C=00-foundations/04-logic
+See §6 for statements, §7 for hints, and §8 for worked corrections.
+Optional exercises are in optional/Skeleton.lean and are reported separately.
 -/
 set_option warningAsError true
 
 namespace Course04
 
--- double-negation elimination
-theorem dne (p : Prop) : ¬¬p → p := by
-  sorry
+theorem double_negation_elimination (p : Prop) : ¬¬p → p := by
+  intro hnnp
+  apply Classical.byContradiction
+  intro hnp
+  exact hnnp hnp
 
--- the law of excluded middle (try to DERIVE it, rather than just citing `Classical.em`)
-theorem em (p : Prop) : p ∨ ¬p := by
-  sorry
+theorem excluded_middle (p : Prop) : p ∨ ¬p := by
+  apply Classical.byContradiction
+  intro neither
+  have hnp : ¬p := by
+    intro hp
+    apply neither (Or.inl hp)
+  apply neither (Or.inr hnp)
 
--- Peirce's law: classically true, but it mentions no ¬ at all — a famous "purely implicational" classic
+
 theorem peirce (p q : Prop) : ((p → q) → p) → p := by
-  sorry
+  intro hpqp
+  apply Classical.byContradiction
+  intro hnp
+  have hpq : p → q := by
+    intro hp
+    exfalso
+    exact hnp hp
+  have hp : p := hpqp hpq
+  exact hnp hp
 
--- the classical half of De Morgan (the converse is constructive — see the exercises)
+
 theorem not_and (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
-  sorry
+  intro hnpq
+  cases Classical.em q with
+  | inl hq =>
+    cases Classical.em p with
+    | inl hp =>
+      exfalso
+      exact hnpq ⟨ hp, hq ⟩
+    | inr hnp => exact Or.inl hnp
+  | inr hnq =>
+    exact Or.inr hnq
+
+theorem truth_table_counterexample :
+    ∃ a b : Bool, ((!(a || b)) || (a && b)) = false := by
+  refine ⟨true, ?_⟩
+  refine ⟨false, ?_⟩
+  rfl
+
+theorem truth_table_not_valid :
+    ¬(∀ a b : Bool, ((!(a || b)) || (a && b)) = true) := by
+  intro h
+  have hrow : false = true := h false true
+  contradiction
 
 end Course04

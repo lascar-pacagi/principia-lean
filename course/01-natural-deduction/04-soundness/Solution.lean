@@ -7,6 +7,8 @@ import Principia.Logic.Semantics
 `make test` kernel-checks this; `make axioms` audits it. Graduates into `Principia.NatDed.Soundness`.
 Read to understand *why*, not to copy.
 -/
+set_option warningAsError true
+
 open scoped Principia.Form Principia
 
 namespace Principia.Form
@@ -37,21 +39,57 @@ theorem byContra_eval {v : Nat → Bool} {a : Form}
 -- Induction on the derivation: one case per inference rule, each shown to preserve truth.
 theorem soundness {Γ : List Form} {φ : Form} (d : Γ ⊢ φ) : Entails Γ φ := by
   induction d with
-  | ax h           => intro v hΓ; exact hΓ _ h
-  | impI d ih      => intro v hΓ; rw [eval_imp]; intro ha; exact ih v (sat_cons ha hΓ)
-  | impE d1 d2 ih1 ih2 => intro v hΓ; have h1 := ih1 v hΓ; rw [eval_imp] at h1; exact h1 (ih2 v hΓ)
-  | andI d1 d2 ih1 ih2 => intro v hΓ; rw [eval_and]; exact ⟨ih1 v hΓ, ih2 v hΓ⟩
-  | andE₁ d ih     => intro v hΓ; have h := ih v hΓ; rw [eval_and] at h; exact h.1
-  | andE₂ d ih     => intro v hΓ; have h := ih v hΓ; rw [eval_and] at h; exact h.2
-  | orI₁ d ih      => intro v hΓ; rw [eval_or]; exact Or.inl (ih v hΓ)
-  | orI₂ d ih      => intro v hΓ; rw [eval_or]; exact Or.inr (ih v hΓ)
+  | ax h =>
+    intro v hΓ
+    exact hΓ _ h
+  | impI d ih =>
+    intro v hΓ
+    rw [eval_imp]
+    intro ha
+    exact ih v (sat_cons ha hΓ)
+  | impE d1 d2 ih1 ih2 =>
+    intro v hΓ
+    have hf := ih1 v hΓ
+    rw [eval_imp] at hf
+    exact hf (ih2 v hΓ)
+  | andI d1 d2 ih1 ih2 =>
+    intro v hΓ
+    rw [eval_and]
+    exact ⟨ih1 v hΓ, ih2 v hΓ⟩
+  | andE₁ d ih =>
+    intro v hΓ
+    have h := ih v hΓ
+    rw [eval_and] at h
+    exact h.1
+  | andE₂ d ih =>
+    intro v hΓ
+    have h := ih v hΓ
+    rw [eval_and] at h
+    exact h.2
+  | orI₁ d ih =>
+    intro v hΓ
+    rw [eval_or]
+    exact Or.inl (ih v hΓ)
+  | orI₂ d ih =>
+    intro v hΓ
+    rw [eval_or]
+    exact Or.inr (ih v hΓ)
   | orE dor dl dr ihor ihl ihr =>
-      intro v hΓ; have hor := ihor v hΓ; rw [eval_or] at hor
-      cases hor with
-      | inl ha => exact ihl v (sat_cons ha hΓ)
-      | inr hb => exact ihr v (sat_cons hb hΓ)
-  | flsE d ih      => intro v hΓ; have h := ih v hΓ; simp [eval] at h
-  | raa d ih       => intro v hΓ; apply byContra_eval; intro hna; exact ih v (sat_cons hna hΓ)
+    intro v hΓ
+    have hor := ihor v hΓ
+    rw [eval_or] at hor
+    cases hor with
+    | inl ha => exact ihl v (sat_cons ha hΓ)
+    | inr hb => exact ihr v (sat_cons hb hΓ)
+  | flsE d ih =>
+    intro v hΓ
+    have h := ih v hΓ
+    simp [eval] at h
+  | raa d ih =>
+    intro v hΓ
+    apply byContra_eval
+    intro hna
+    exact ih v (sat_cons hna hΓ)
 
 theorem tautology_of_proof {φ : Form} (d : [] ⊢ φ) : Tautology φ :=
   fun v => soundness d v (by intro ψ h; cases h)

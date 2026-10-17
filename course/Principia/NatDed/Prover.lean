@@ -10,7 +10,8 @@ itself; the type is the certificate, and `prove_sound` just reads it off via `so
 The search applies the *introduction* rules driven by the goal's shape, plus the assumption rule, bounded
 by `fuel`. It is intentionally **incomplete** (it does no elimination and no classical `raa` search): its
 "yes" is always right, but a "no" only means *this* search gave up. Completeness — every valid formula
-*has* a derivation — is slice 1.6.
+*has* a derivation — is slice 1.6. The total complete solver in slice 1.7 is `solve` / `proveComplete`
+from `Principia.NatDed.Solver`; this module remains the first, deliberately limited search.
 -/
 namespace Principia
 
@@ -44,13 +45,13 @@ def prove (φ : Form) : Option ([] ⊢ φ) := prove? (φ.size + 1) [] φ
 
 /-- **The prover is sound by construction.** If the search succeeds, the formula is entailed. -/
 theorem prove_sound {Γ : List Form} {φ : Form} {fuel : Nat}
-    (h : (prove? fuel Γ φ).isSome) : Form.Entails Γ φ := by
+    (h : (prove? fuel Γ φ).isSome = true) : Form.Entails Γ φ := by
   cases hp : prove? fuel Γ φ with
   | none   => rw [hp] at h; simp at h
   | some d => exact Form.soundness d
 
 /-- A successful closed search certifies a tautology. -/
-theorem prove_tautology {φ : Form} (h : (prove φ).isSome) : Form.Tautology φ := by
+theorem prove_tautology {φ : Form} (h : (prove φ).isSome = true) : Form.Tautology φ := by
   cases hp : prove φ with
   | none   => rw [hp] at h; simp at h
   | some d => exact Form.tautology_of_proof d

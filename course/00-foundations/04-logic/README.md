@@ -1,29 +1,49 @@
-# 04-logic — natural deduction, classical vs constructive, and propositional semantics
+# 04-logic — natural deduction, classical reasoning, and truth tables
 
-**Objective.** Name and understand the system you've been using: **natural deduction** (inference rules
-↔ Lean tactics), see the **constructive/classical** boundary (and pay for crossing it, in axioms), and
-meet **propositional semantics from zero** — valuations, truth tables, and validity `⊨`. This is the
-conceptual ground for Course 1, where we *formalize* a natural-deduction prover and prove it **sound and
-complete** with respect to exactly these semantics.
+**Objective.** Read a natural-deduction rule and a whole proof tree; distinguish building evidence
+from using it; practice excluded middle and proof by contradiction. Interpret propositional formulas
+under Boolean valuations and understand what soundness and classical completeness relate.
 
-**Prerequisites.** `02-propositions` (the connectives & tactics) and `03-recursion` (syntax/semantics by
-induction). 
+**Prerequisites.** `02-propositions` (logical connectives, `have`, and tactics) and `03-recursion`
+(inductive data, recursive functions, and induction).
 
-**The rung.** Single rung — four **classical** theorems (they genuinely need classical logic, so their
-`#print axioms` includes `Classical.choice`).
+The teaching examples are different from the required exercises. Read the lesson first,
+try the exercises, consult the graduated hints if needed, then read the worked corrections.
+The conclusion separates proof-system completeness from the limits of a particular search program.
 
-## Definition of done
+## Exercises and checks
 
-- [ ] `make lab C=00-foundations/04-logic` goes red → green (all four `sorry`s discharged).
-- [ ] `make test` stays green.
-- [ ] `make axioms` clean — note these keystones *do* depend on `Classical.choice` (by design; that's the
-      lesson). The audit forbids only `sorryAx`, not the accepted classical axioms.
-
-## Run
+- `Skeleton.lean`: four required classical proofs and a truth-table exercise with two Lean statements.
+- `Solution.lean`: verified answers; explanations in §8.
+- `optional/Skeleton.lean`: two additional exercises, reported separately by the lab.
+- `optional/Solution.lean`: verified optional answers; explanations in §10.
 
 ```bash
 make lab C=00-foundations/04-logic
+make test
+make axioms
 make explainer C=00-foundations/04-logic
 ```
 
-Read `explainer.qmd` (or `explainer.html` / `explainer.pdf`) first.
+The lab reports required success in green and unfinished optional work in yellow when terminal
+colors are available. Required work determines the exit status. `make test` checks all solution
+files, including the optional answers. The axiom audit rejects unfinished proofs outside learner
+skeletons, ad-hoc axiom declarations, and reported `sorryAx` dependencies.
+
+Preview a reset of this lesson's required and optional exercises:
+
+```bash
+make reset C=00-foundations/04-logic DRY_RUN=1
+```
+
+Remove `DRY_RUN=1` to reset, saving backups of changed files.
+
+## Definition of done
+
+- [ ] Required lab passes with no remaining `sorry`.
+- [ ] Read the proof states and explain where each introduced hypothesis gets its type.
+- [ ] Distinguish `Γ ⊢ φ` from `Γ ⊨ φ`, and explain the classical scope of completeness.
+- [ ] `make test` and `make axioms` pass.
+- [ ] Optional: both additional exercises pass and their axiom reports are understood.
+
+Read `explainer.qmd`, or the rendered `explainer.html` / `explainer.pdf`.

@@ -1,49 +1,77 @@
 /-!
-# 04-logic — Solution  (verified answer key)
+# 04-logic — Verified solutions
 
-`make test` kernel-checks this; `make axioms` audits the keystones. These DO depend on `Classical.choice`
-— that is the lesson, not a leak. Read to understand *why*, not to copy.
+The worked explanations are in §8 of the explainer.
+`make test` checks these proofs; `make axioms` audits their dependencies.
 -/
+set_option warningAsError true
+
 namespace Course04
 
--- `Classical.byContradiction : ¬¬p → p` is the classical engine. Here it *is* the proof.
-theorem dne (p : Prop) : ¬¬p → p := by
-  intro h
-  exact Classical.byContradiction h
-
--- Excluded middle, DERIVED from by-contradiction: assume `¬(p ∨ ¬p)`; then `p` would let us build the
--- left side, so `¬p`; but that builds the right side — contradiction.
-theorem em (p : Prop) : p ∨ ¬p := by
+theorem double_negation_elimination (p : Prop) : ¬¬p → p := by
+  intro hnnp
   apply Classical.byContradiction
-  intro h
-  exact h (Or.inr (fun hp => h (Or.inl hp)))
+  intro hnp
+  exact hnnp hnp
 
--- Peirce: assume `¬p`; then `p → q` holds vacuously, so `h` hands us `p` — contradiction.
+theorem excluded_middle (p : Prop) : p ∨ ¬p := by
+  apply Classical.byContradiction
+  intro hneither
+  have hnp : ¬p := by
+    intro hp
+    have hor : p ∨ ¬p := Or.inl hp
+    exact hneither hor
+  have hor : p ∨ ¬p := Or.inr hnp
+  exact hneither hor
+
 theorem peirce (p q : Prop) : ((p → q) → p) → p := by
   intro h
   apply Classical.byContradiction
   intro hnp
-  exact hnp (h (fun hp => absurd hp hnp))
+  have hpq : p → q := by
+    intro hp
+    exact False.elim (hnp hp)
+  have hp : p := h hpq
+  exact hnp hp
 
--- classical De Morgan: split on `p ∨ ¬p`.
 theorem not_and (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
-  intro h
+  intro hnotBoth
   cases Classical.em p with
-  | inl hp  => exact Or.inr (fun hq => h ⟨hp, hq⟩)
-  | inr hnp => exact Or.inl hnp
+  | inl hp =>
+    right
+    intro hq
+    exact hnotBoth ⟨hp, hq⟩
+  | inr hnp =>
+    left
+    exact hnp
 
-/-! ## Checks (Tier-2 computational + honesty audit)
+theorem truth_table_counterexample :
+    ∃ a b : Bool, ((!(a || b)) || (a && b)) = false := by
+  exact ⟨true, false, rfl⟩
 
-Propositional logic has *semantics*: a formula's truth is a function of its variables' truth values,
-and a tautology is true under **every** valuation. Over `Bool` that's a finite check `decide` can run —
-the truth-table decision procedure we'll formalize in Course 1. -/
+theorem truth_table_not_valid :
+    ¬(∀ a b : Bool, ((!(a || b)) || (a && b)) = true) := by
+  intro hAll
+  obtain ⟨a, b, hRow⟩ := truth_table_counterexample
+  have hTrue : ((!(a || b)) || (a && b)) = true := hAll a b
+  rw [hRow] at hTrue
+  contradiction
 
-example : ∀ a b : Bool, (!(a && b)) = ((!a) || (!b)) := by decide   -- De Morgan, by truth table
-#guard decide (∀ p : Bool, p || !p)                                  -- excluded middle, by truth table
+/-! ## Checks — finite Boolean computation and proof dependencies -/
 
-#print axioms dne       -- depends on Classical.choice (accepted) — never sorryAx
-#print axioms em
+example : ∀ a b : Bool, (!(a && b)) = ((!a) || (!b)) := by
+  decide
+example : ∀ a : Bool, (a || !a) = true := by
+  decide
+
+#guard ((!true) || false) = false
+#guard ((!false) || false) = true
+
+#print axioms double_negation_elimination
+#print axioms excluded_middle
 #print axioms peirce
 #print axioms not_and
+#print axioms truth_table_counterexample
+#print axioms truth_table_not_valid
 
 end Course04

@@ -1,13 +1,11 @@
 import Principia.Logic.Syntax
 
 /-!
-# 02-semantics — Skeleton  (THIS IS YOUR FILE)
+# 02-semantics — Your exercises
 
-`eval`, `Tautology`, `Entails`, and the checker `taut?` are GIVEN. Prove the three semantic facts —
-replace each `sorry`.
-
-Run:  make lab C=01-natural-deduction/02-semantics
-Stuck? See §5 "Prove it" and §6 "Hints for the skeleton" in `explainer.qmd`.
+Run: make lab C=01-natural-deduction/02-semantics
+See §6 for statements, §7 for hints, and §8 for worked corrections.
+Optional exercises have their own skeleton and answer key under optional/.
 -/
 set_option warningAsError true
 open scoped Principia.Form
@@ -43,16 +41,13 @@ def taut? (φ : Form) : Bool := (allEnvs (maxVar φ)).all (fun v => eval v φ)
 
 /-! Your three facts. -/
 
--- the value of `∼φ` is the boolean negation of the value of `φ`
 theorem eval_neg (v : Nat → Bool) (φ : Form) : eval v (∼φ) = !eval v φ := by
   sorry
 
--- `φ ⇒ φ` is valid
 theorem taut_imp_self (φ : Form) : Tautology (φ ⇒ φ) := by
   sorry
 
--- excluded middle is valid (it's just a truth table — contrast 04-logic)
-theorem taut_em (φ : Form) : Tautology (φ ⋎ ∼φ) := by
+theorem taut_excluded_middle (φ : Form) : Tautology (φ ⋎ ∼φ) := by
   sorry
 
 end Principia.Form

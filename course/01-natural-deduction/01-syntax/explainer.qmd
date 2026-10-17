@@ -1,181 +1,285 @@
 ---
-title: "1.1 — Syntax: formulas as data"
+title: "1.1 — Syntax: building formulas as data"
 ---
 
-> **Where you are.** Course 0 is behind you: you can build types, recurse, prove by induction, wield the
-> connectives, and you've seen the syntax/semantics split. Now Course 1 begins — **a theorem prover for
-> natural deduction, proved correct.** Everything starts with the *raw material*: a data type of
-> formulas. This slice (1.1) defines it; its code graduates into the real library `Principia.Logic.Syntax`.
+> **Where you are.** We begin a propositional theorem prover. First we need formulas as
+> data; then valuations, derivations, and proofs about both. Lessons 1.5–1.7 move from a
+> limited search to a complete solver that constructs a proof for every tautology.
 
-## 1. The question
+## 1. The question: what will the program receive?
 
-To *write a program* that reasons about logical formulas — evaluates them, searches for their proofs —
-we first need formulas to be **data the program can take apart**. "`p → (q → p)`" on paper is ink; in
-Lean it must be a value of some type, built from pieces a function can pattern-match on. What type?
+On paper, `(p ∨ q) → q` is a formula. A program needs a tree it can inspect. It must distinguish
+an atom, a constant falsehood, an implication, a conjunction, and a disjunction. This is the
+same data-design problem as expression trees in lesson 03, with five constructors instead of two.
 
-You already know the answer's shape from `03-recursion`: an **inductive type**, one constructor per way
-of forming a formula. A formula is a *tree* — `p → (q → p)` is an `imp` node over a `var` and another
-`imp` — exactly the branching data we practiced on.
+We use natural numbers as **names** for atoms: `var 0` names p, `var 1` names q. The number is
+an identifier, not a truth value. `var 0` doesn't mean false, and `var 1` doesn't mean true.
 
-## 2. The design
+## 2. The formula type and its values
 
-```lean
-inductive Form where
-  | var : Nat → Form           -- an atomic proposition, indexed by a number
-  | fls : Form                 -- falsum ⊥ (the constant "false")
-  | imp : Form → Form → Form   -- implication
-  | and : Form → Form → Form   -- conjunction
-  | or  : Form → Form → Form   -- disjunction
-deriving DecidableEq, Repr
+The supplied type has these constructors:
+
+```text
+Form.var : Nat → Form
+Form.fls : Form
+Form.imp : Form → Form → Form
+Form.and : Form → Form → Form
+Form.or  : Form → Form → Form
 ```
 
-Three deliberate choices, each of which pays off later:
+A `Form` is syntax. It is different from a Lean proposition of type `Prop`. We will define
+what a formula means and what counts as a derivation of it in later lessons.
 
-- **`var : Nat → Form`.** Atoms are indexed by a `Nat`, so there are *infinitely many* available and we
-  never run out. This is also our hook to **first-order logic**: in slice 1.7 a `var` becomes an atomic
-  *predicate applied to terms*, and almost nothing else changes. Keeping atoms abstract now keeps us
-  FOL-ready.
-- **`fls` is primitive; `¬` is not.** We take falsum `⊥` as a constructor and *define* negation by
-  `∼φ := φ ⇒ ⊥`. Why? Because in natural deduction "not" really *is* "implies a contradiction" — making
-  it derived means we get its proof rules for free from the rules for `⇒`, and the core type stays small
-  (five constructors to reason about, not eight).
-- **`∧` and `∨` are primitive.** We *could* define them from `⇒`/`⊥` too, but keeping them gives each its
-  own natural-deduction intro/elim rules (slice 1.3) — the clean, classical presentation.
+These commands use the supplied library definitions:
 
-`deriving DecidableEq, Repr` asks Lean to generate an equality test (so we can compare formulas, e.g.
-`#guard`) and a printer (so `#eval` shows them).
+
+```lean
+import Principia.Logic.Syntax
+open Principia Principia.Form
+open scoped Principia.Form Principia
+```
+
+
+```lean
+#check Form.var 0
+#check Form.imp (Form.or (Form.var 0) (Form.var 1)) (Form.var 1)
+#eval (Form.imp (Form.or (Form.var 0) (Form.var 1)) (Form.var 1)).size
+```
+
+Both checked expressions have type `Form`. The last line prints `5`: three atom occurrences,
+one disjunction node, and one implication node. Reusing the atom name 1 creates another leaf;
+we count occurrences, not distinct names. The generated `Repr` printer can display formulas;
+`DecidableEq` supplies a procedure for checking whether two formula trees are equal.
 
 ### Derived connectives
 
-```lean
-def neg (φ : Form) : Form := imp φ fls          -- ∼φ
-def top : Form := neg fls                        -- ⊤ := ∼⊥
-def iff (a b : Form) : Form := and (imp a b) (imp b a)   -- a ↔ b
-```
-
-Nothing new — just abbreviations built from the five primitives.
-
-### Notation
-
-Reading `imp (var 0) (imp (var 1) (var 0))` is painful, so we add notation. Crucially it's **`scoped`**:
-it only switches on when you `open scoped Principia.Form`, so our object-logic `⇒`/`⋏`/`⋎`/`∼`/`⊥` never
-collide with Lean's *own* `→`/`∧`/`∨`/`⊥` (which live at the `Prop` level — a distinction this whole
-course turns on).
+Negation uses the definition `Form.neg a := Form.imp a Form.fls`: refuting a means that a
+implies falsehood. `Form.top` is the formula `neg fls`, and `Form.iff a b` is the conjunction
+of the two implications. They are definitions built from the primitive constructors.
 
 ```lean
-scoped infixr:55 " ⇒ " => Form.imp     -- p ⇒ q ⇒ r  parses as  p ⇒ (q ⇒ r)
-scoped infixr:65 " ⋏ " => Form.and     -- binds tighter than ⇒
-scoped infixr:60 " ⋎ " => Form.or
-scoped prefix:70 "∼"    => Form.neg     -- binds tightest
-scoped notation:max "⊥" => Form.fls
+example (a b : Form) : Form.iff a b =
+    Form.and (Form.imp a b) (Form.imp b a) := by
+  rfl
 ```
 
-The precedences (`∼` > `⋏` > `⋎` > `⇒`, with `⇒` to the right) mirror ordinary logical reading, so
-`∼p ⋏ q ⇒ r` means `((∼p) ⋏ q) ⇒ r`. Now `Form.var 0 ⇒ (Form.var 1 ⇒ Form.var 0)` reads like the logic
-it denotes.
+Here `rfl` checks a defining equation between formula values; it isn't proving the logical
+claim represented by that formula.
 
-### A measure: `size`
+### Notation and parentheses
 
-For proofs by induction (and, later, to argue the prover terminates) it helps to have a number that
-shrinks on sub-formulas:
+With `open scoped Principia.Form`, `a ⇒ b`, `a ⋏ b`, `a ⋎ b`, and `∼a` name our formula
+constructors and derived negation. Lean's `a → b` instead describes a function type or an
+implication between Lean propositions; keep those levels separate.
 
 ```lean
-def size : Form → Nat
-  | var _   => 1
-  | fls     => 1
-  | imp a b => 1 + size a + size b
-  | and a b => 1 + size a + size b
-  | or a b  => 1 + size a + size b
+example (a b : Form) : (a ⋎ b) = Form.or a b := by
+  rfl
+example (a b c : Form) : (a ⇒ b ⇒ c) = Form.imp a (Form.imp b c) := by
+  rfl
 ```
 
-Same shape as `Expr.size` from `03` — count the constructors.
+`⇒` associates to the right. Negation binds most tightly, then conjunction, disjunction,
+and implication. Parentheses remain useful when reading a new statement.
 
-## 3. Inducting over five constructors
+## 3. Definitions, recursion, and induction
 
-`03-recursion` did induction on a type with two and three constructors; `Form` has **five**, so
-`induction φ` produces five cases (three of them with induction hypotheses, since `imp`/`and`/`or`
-recurse). A clean idiom handles them uniformly when the per-case reasoning is the same:
+`size` counts constructors: each leaf contributes one; each binary node contributes one
+plus its two children's sizes. For a concrete tree it computes directly. For an arbitrary
+tree, induction provides one case per constructor.
+
+To practice that method without solving the size exercises, consider a function that rebuilds
+an identical formula:
 
 ```lean
-theorem size_pos (φ : Form) : 1 ≤ φ.size := by
-  induction φ <;> simp only [size] <;> omega
+def rebuild : Form → Form
+  | .var i => .var i
+  | .fls => .fls
+  | .imp a b => .imp (rebuild a) (rebuild b)
+  | .and a b => .and (rebuild a) (rebuild b)
+  | .or a b => .or (rebuild a) (rebuild b)
+
+theorem rebuild_eq (a : Form) : rebuild a = a := by
+  induction a with
+  | var i => rfl
+  | fls => rfl
+  | imp a b iha ihb =>
+    simp only [rebuild]
+    rw [iha, ihb]
+  | and a b iha ihb =>
+    simp only [rebuild]
+    rw [iha, ihb]
+  | or a b iha ihb =>
+    simp only [rebuild]
+    rw [iha, ihb]
 ```
 
-`induction φ <;> tac` runs `tac` on *every* resulting case. `simp only [size]` unfolds `size` in each
-(turning the goal into `1 ≤ 1` for the leaves and `1 ≤ 1 + … + …` for the nodes), and `omega` closes
-each numeric goal. One line, five cases. (We don't even need the induction hypotheses here — the bound
-follows from the `1 +` alone — but they're there if a harder property needs them.)
+The `imp` branch has `iha : rebuild a = a` and `ihb : rebuild b = b`. After unfolding, its goal is:
 
-## 4. The road ahead (Course 1)
+```text
+Form.imp (rebuild a) (rebuild b) = Form.imp a b
+```
 
-This is the first plank. The slices to come build straight on it:
+The two rewrites replace the rebuilt children with the original children. The other binary
+branches work with their own constructors. Leaf cases have no recursive children or induction
+hypotheses. Each `=>` opens an indented branch, where several tactics can be written.
 
-- **1.2 Semantics** — `eval : (Nat → Bool) → Form → Bool` (the truth tables of `04-logic`, now as code),
-  validity `⊨`, and a runnable tautology checker.
-- **1.3 Natural deduction** — the relation `Γ ⊢ φ` as an `inductive` type whose constructors are the
-  inference rules of `04-logic §2`.
-- **1.4 Soundness** — `Γ ⊢ φ → Γ ⊨ φ`, by induction on derivations (Milestone **M1**).
-- **1.5 The prover** — a function that *searches* for a derivation.
-- **1.6 Completeness** — `Γ ⊨ φ → Γ ⊢ φ`, closing the loop `⊢ ⟺ ⊨`.
+For arithmetic goals about `size`, unfolding exposes natural-number expressions. `omega`
+can then use arithmetic facts already in the context; it doesn't perform formula induction
+for us. The exercises let you practice that combination.
 
-## 5. Prove it
+## 4. What a size statement means
 
-Everything above is given in `Skeleton.lean`. Prove the two structural lemmas:
+`a.size` is a natural number computed from a formula, while a statement such as
+`a.size = b.size` is a Lean proposition about two computations. Equal sizes don't imply equal
+formulas: `Form.var 0` and `Form.var 7` both have size one, but are different leaves.
+
+```lean
+#guard (Form.var 0).size = (Form.var 7).size
+#guard Form.var 0 != Form.var 7
+```
+
+The first check compares measurements; the second compares syntax. Neither assigns a truth
+value to either atom. This separates three questions we will keep asking: what data was
+built, what a function computes from it, and which proposition we want to establish about it.
+
+## 5. How this definition supports the complete prover
+
+The same `Form` type is used throughout Course 1:
+
+| Lesson | What we build from the formulas |
+|---|---|
+| 1.2 | Boolean evaluation under a valuation. |
+| 1.3 | Derivation trees indexed by context and conclusion. |
+| 1.4 | A soundness theorem relating derivations to evaluation. |
+| 1.5 | A small search that constructs some derivations automatically. |
+| 1.6 | A construction turning universal validity into a derivation. |
+| 1.7 | A complete solver combining a certified finite table with that construction. |
+
+The final solver will cover finite classical propositional formulas. Adding first-order
+quantifiers would require additional syntax, semantics, and proof rules; numbering atoms
+by natural numbers alone doesn't provide that extension.
+
+## 6. Prove it
+
+Open `Skeleton.lean`. The supporting definitions are supplied; complete these declarations.
+The worked answers are after the hints.
 
 ```bash
 make lab C=01-natural-deduction/01-syntax
 ```
 
-1. `size_pos (φ) : 1 ≤ φ.size`
-2. `size_neg (φ) : (∼φ).size = φ.size + 2`
-
-Try cold; §6 has hints.
-
-## 6. Hints for the skeleton
-
-**1 `size_pos`.** *Nudge:* induct on `φ`; the reasoning is identical in every case, so use the
-`induction φ <;> … <;> …` idiom. *More:* `induction φ <;> simp only [size] <;> omega`.
-
-**2 `size_neg`.** *Nudge:* no induction needed — `∼φ` is *by definition* `φ ⇒ ⊥`, so just unfold and
-count. *More:* `simp only [neg, size]; omega` (or `simp [neg, size]`).
-
-## 7. Exercises (optional, for fluency)
-
-1. `three_le_size_imp (φ ψ : Form) : 3 ≤ (φ ⇒ ψ).size`. *Hint:* an implication's size is `1 + size φ +
-   size ψ`, and each part is `≥ 1` by `size_pos` — pull those facts in with `have`, then `omega`.
-2. `Form.top.size = 3`. *Hint:* `top` is `∼⊥ = (⊥ ⇒ ⊥)`; everything is concrete, so it just computes.
-
-## 8. Corrections to the optional exercises
-
-### Exercise 1 — `three_le_size_imp`
-
 ```lean
-theorem three_le_size_imp (φ ψ : Form) : 3 ≤ (φ ⇒ ψ).size := by
-  have h1 := size_pos φ
-  have h2 := size_pos ψ
-  simp only [size]; omega
+theorem size_pos (φ : Form) : 1 ≤ φ.size := by
+  sorry
 ```
 
-`size (φ ⇒ ψ)` unfolds to `1 + size φ + size ψ`. On its own `omega` only knows the two sizes are
-naturals (`≥ 0`), giving `≥ 1` — not enough. The two `have`s feed it the sharper facts `size φ ≥ 1` and
-`size ψ ≥ 1` (each from `size_pos`), and now `1 + (≥1) + (≥1) ≥ 3` is plain arithmetic. The lesson:
-`omega` is only as strong as the hypotheses in scope — supply the lemmas it needs.
-
-### Exercise 2 — `Form.top.size = 3`
-
 ```lean
-example : Form.top.size = 3 := rfl
+theorem size_neg (φ : Form) : (∼φ).size = φ.size + 2 := by
+  sorry
 ```
 
-`top` is `neg fls = imp fls fls`, whose `size` is `1 + size fls + size fls = 1 + 1 + 1`, and the kernel
-computes that to `3`. No variables, nothing to assume — pure computation, so `rfl` (or `by decide`).
-Contrast `size_neg`, which is about an *arbitrary* `φ` and so needs `omega` rather than `rfl`.
+The required status determines whether the lab succeeds. Optional placeholders are reported
+separately in yellow when terminal colors are available; required success is green.
 
-## 9. Going further
+## 7. Hints
 
-- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, *Inductive Types*, for the
-  general theory behind `Form` and `deriving`.
-- **Logic and Proof** — `../../references/logic_and_proof`: how logicians present the *language* of
-  propositional logic (well-formed formulas), which is exactly what `Form` encodes.
-- **Next: slice 1.2 — semantics.** We turn `04-logic`'s truth tables into a function `eval`, define
-  validity `⊨`, and build a tautology checker you can actually run.
+**`size_pos`.** Induct over the five constructors. Unfold only `Form.size` in each branch, then use arithmetic. Leaf cases have no induction hypotheses.
+
+**`size_neg`.** Unfold `Form.neg` and `Form.size`. The remaining equation is about adding natural numbers; induction is unnecessary.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises first. These proofs match `Solution.lean`, checked by `make test`.
+
+### `size_pos`
+
+```lean
+theorem size_pos (φ : Form) : 1 ≤ φ.size := by
+  induction φ with
+  | var i => exact Nat.le_refl 1
+  | fls => exact Nat.le_refl 1
+  | imp a b iha ihb =>
+    simp only [size]
+    omega
+  | and a b iha ihb =>
+    simp only [size]
+    omega
+  | or a b iha ihb =>
+    simp only [size]
+    omega
+```
+
+Each branch reduces the lower bound to natural-number arithmetic. `omega` handles that arithmetic after the definition is unfolded. This proof does not rely on the induction hypotheses, since the leading node already contributes one.
+
+### `size_neg`
+
+```lean
+theorem size_neg (φ : Form) : (∼φ).size = φ.size + 2 := by
+  simp only [neg, size]; omega
+```
+
+Negation adds an implication node and a falsehood leaf. After unfolding, the kernel exposes `1 + a.size + 1`; arithmetic proves the requested ordering of those additions.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`; the same lab command checks it separately. These exercises have
+their own verified answer key in `optional/Solution.lean`.
+
+```lean
+theorem three_le_size_imp (a b : Form) : 3 ≤ (a ⇒ b).size := by
+  sorry
+```
+
+*Hint:* Use the lower bound for each child; the implication node contributes one more.
+
+
+```lean
+theorem top_size : Form.top.size = 3 := by
+  sorry
+```
+
+*Hint:* Expand the definition of top and let the closed size expression compute.
+
+
+Read each statement as an input/output contract. Identify what evidence is already available
+and what result must be built. You may reuse the proved library results from this lesson.
+
+## 10. Worked corrections to the optional exercises
+
+### `three_le_size_imp`
+
+```lean
+theorem three_le_size_imp (a b : Form) : 3 ≤ (a ⇒ b).size := by
+  have ha := Form.size_pos a
+  have hb := Form.size_pos b
+  simp only [Form.size]
+  omega
+```
+
+Unfolding the implication size gives `1 + a.size + b.size`. Natural numbers alone would only give a lower bound of one. The two `have` lines supply the sharper bounds `1 ≤ a.size` and `1 ≤ b.size`; `omega` then combines them to obtain three.
+
+
+### `top_size`
+
+```lean
+theorem top_size : Form.top.size = 3 := by
+  rfl
+```
+
+`top` expands to `imp fls fls`. Each falsehood leaf has size one and the implication contributes one more, so the entire closed expression computes to three. `rfl` checks that computation.
+
+
+## 11. Conclusion
+
+A formula is data built from five constructors; an atom index is a name. Definitions such as
+negation introduce no new constructor. Computation handles known trees, and induction handles
+unknown trees one constructor at a time. Next we assign Boolean meanings to those trees.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: compare the
+  propositional syntax, semantics, and natural-deduction chapters with these definitions.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  review inductive types, dependent functions, and recursion as needed.
+- **Next:** 1.2 — Semantics: valuations and truth tables.

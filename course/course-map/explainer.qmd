@@ -42,7 +42,7 @@ A verified library is a tower of definitions and the theorems that connect them.
 | Layer | Job | Key contents | Built in |
 |---|---|---|---|
 | **Logic** | the object language | `Form` (formulas), `eval`, `Tautology`/`⊨`, a runnable `taut?` | `01-natural-deduction/{01,02}` |
-| **NatDed** | a proof *system* + its metatheory | `Deriv` (`⊢`), soundness, a prover, completeness | `01-natural-deduction/{03–06}` |
+| **NatDed** | a proof *system* + its metatheory | `Deriv` (`⊢`), soundness, a prover, completeness | `01-natural-deduction/{03–07}` |
 | **Resolution** | a refutation calculus | CNF, `resolvent`, `Refut`, soundness, a decision procedure | `02-resolution/{01–05}` |
 | **Sat** | practical satisfiability | `assign`, DPLL, CDCL, a verified LRAT checker | `03-sat/{01–04}` |
 | **Euclid** | synthetic geometry | `EuclidPlane` axioms, Prop I.1, the five-segment (SAS) axiom | `04-euclid/{01,02}` |
@@ -76,10 +76,12 @@ capability.
 - **Course 0 — Foundations** (`00-foundations/00–04`). Lean and proof from zero: a first `theorem`, `Nat`
   induction, the connectives via intro/elim, inductive types + recursion (a baby soundness theorem,
   `eval_swap`), and natural deduction shown *as* Lean's own tactics — the bridge into Course 1.
-- **Course 1 — Natural deduction** (`01-natural-deduction/01–06`). The first capstone: define formulas
+- **Course 1 — Natural deduction** (`01-natural-deduction/01–07`). The first capstone: define formulas
   and their truth (`Logic`), the derivation system `⊢` (`Deriv`, with classical RAA), prove **soundness**
-  (`⊢ ⇒ ⊨`), build a **prover** (typed proof search — sound by construction), and prove **completeness**
+  (`⊢ ⇒ ⊨`), build a first limited search, then prove **completeness**
   by Kalmár's elementary method — closing the loop `provable_iff_tautology : Nonempty (⊢ φ) ↔ ⊨ φ`.
+  Finish with an executable complete propositional solver: certified truth tables decide the
+  answer, and the executable Kalmár construction returns a derivation for each tautology.
 - **Course 2 — Resolution** (`02-resolution/01–05`). A second, different prover: convert to CNF (with
   `Tautology φ ↔ (toCnf false φ).Unsat`), the resolution rule and `Refut` (intrinsically-typed
   refutations), a fuel-bounded saturation prover, and **soundness** (`Refut S [] ⇒ S.Unsat`). Full
@@ -115,20 +117,21 @@ tower*; the path tells you *where it lives on disk*.
 | 08 | `01-natural-deduction/04-soundness` | `NatDed/Soundness` | **`soundness : ⊢ ⇒ ⊨`** |
 | 09 | `01-natural-deduction/05-prover` | `NatDed/Prover` | typed proof search (`prove?`) |
 | 10 | `01-natural-deduction/06-completeness` | `NatDed/Kalmar`,`Completeness` | **`provable_iff_tautology`** |
-| 11 | `02-resolution/01-cnf` | `Resolution/Cnf` | CNF; `taut_iff_cnf_unsat` |
-| 12 | `02-resolution/02-rule` | `Resolution/Rule` | `resolvent`, `Refut` |
-| 13 | `02-resolution/03-prover` | `Resolution/Prover` | fuel-bounded saturation |
-| 14 | `02-resolution/04-soundness` | `Resolution/Soundness` | **`refut_unsat`** |
-| 15 | `02-resolution/05-completeness` | `Resolution/Completeness` | decision procedure; the scoped keystone |
-| 16 | `03-sat/01-assign` | `Sat/Basic` | `assign`; `sat_of_assign` |
-| 17 | `03-sat/02-dpll` | `Sat/Dpll` | DPLL; **`dpll_sound`** |
-| 18 | `03-sat/03-lrat` | `Sat/Lrat` | **`check_unsat`** (verified UNSAT) |
-| 19 | `03-sat/04-cdcl` | `Sat/Cdcl` | CDCL (learning + backjumping) |
-| 20 | `04-euclid/01-equilateral` | `Euclid/Basic` | `EuclidPlane`; **`prop_I1`** |
-| 21 | `04-euclid/02-betweenness` | `Euclid/Betweenness` | five-segment (SAS); **`segment_add`** |
-| 22 | `05-goedel/01-diagonal` | `Goedel/Diagonal` | **`lawvere`**, `cantor`, `no_self_neg` |
-| 23 | `05-goedel/02-tarski` | `Goedel/Tarski` | **`tarski`** (truth undefinable) |
-| 24 | `05-goedel/03-incompleteness` | `Goedel/Incompleteness` | **`incompleteness`** (Gödel I) |
+| 11 | `01-natural-deduction/07-complete-solver` | `NatDed/Solver` | complete, terminating `solve` / `proveComplete` |
+| 12 | `02-resolution/01-cnf` | `Resolution/Cnf` | CNF; `taut_iff_cnf_unsat` |
+| 13 | `02-resolution/02-rule` | `Resolution/Rule` | `resolvent`, `Refut` |
+| 14 | `02-resolution/03-prover` | `Resolution/Prover` | fuel-bounded saturation |
+| 15 | `02-resolution/04-soundness` | `Resolution/Soundness` | **`refut_unsat`** |
+| 16 | `02-resolution/05-completeness` | `Resolution/Completeness` | decision procedure; the scoped keystone |
+| 17 | `03-sat/01-assign` | `Sat/Basic` | `assign`; `sat_of_assign` |
+| 18 | `03-sat/02-dpll` | `Sat/Dpll` | DPLL; **`dpll_sound`** |
+| 19 | `03-sat/03-lrat` | `Sat/Lrat` | **`check_unsat`** (verified UNSAT) |
+| 20 | `03-sat/04-cdcl` | `Sat/Cdcl` | CDCL (learning + backjumping) |
+| 21 | `04-euclid/01-equilateral` | `Euclid/Basic` | `EuclidPlane`; **`prop_I1`** |
+| 22 | `04-euclid/02-betweenness` | `Euclid/Betweenness` | five-segment (SAS); **`segment_add`** |
+| 23 | `05-goedel/01-diagonal` | `Goedel/Diagonal` | **`lawvere`**, `cantor`, `no_self_neg` |
+| 24 | `05-goedel/02-tarski` | `Goedel/Tarski` | **`tarski`** (truth undefinable) |
+| 25 | `05-goedel/03-incompleteness` | `Goedel/Incompleteness` | **`incompleteness`** (Gödel I) |
 
 ## 5. How a concept is built (and how to run it)
 

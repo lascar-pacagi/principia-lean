@@ -1,18 +1,16 @@
 /-!
-# 01-syntax — Skeleton  (THIS IS YOUR FILE)
+# 01-syntax — Your exercises
 
-The formula type `Form`, its notation, the derived connectives, and `size` are GIVEN. Prove the two
-structural lemmas — replace each `sorry`.
-
-Run:  make lab C=01-natural-deduction/01-syntax
-Stuck? See §5 "Prove it" and §6 "Hints for the skeleton" in `explainer.qmd`.
+Run: make lab C=01-natural-deduction/01-syntax
+See §6 for statements, §7 for hints, and §8 for worked corrections.
+Optional exercises have their own skeleton and answer key under optional/.
 -/
 set_option warningAsError true
 
 namespace Principia
 
 /-- Propositional formulas. `var n` is the n-th atom; `¬`, `⊤`, `↔` are derived (below).
-    Choosing `var : Nat → Form` (rather than a fixed list) keeps us first-order-ready. GIVEN. -/
+    Indices provide arbitrarily many propositional atom names. GIVEN. -/
 inductive Form where
   | var : Nat → Form
   | fls : Form
@@ -46,11 +44,9 @@ scoped notation:max "⊥" => Form.fls
 
 /-! Your two lemmas. -/
 
--- every formula has at least one constructor
 theorem size_pos (φ : Form) : 1 ≤ φ.size := by
   sorry
 
--- `∼φ` is `φ ⇒ ⊥`, so it has two more constructors than `φ`
 theorem size_neg (φ : Form) : (∼φ).size = φ.size + 2 := by
   sorry
 

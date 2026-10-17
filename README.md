@@ -9,7 +9,7 @@ proofs. Lessons explain the ideas, exercises give you practice, and Lean checks 
 | Part | What you build and learn |
 |---|---|
 | 0. Foundations | Types, propositions, proof tactics, recursion, and induction |
-| 1. Natural deduction | A proof system and a verified theorem prover |
+| 1. Natural deduction | Seven lessons ending in a complete, certified propositional solver |
 | 2. Resolution | Conjunctive normal form, resolution, and a second verified prover |
 | 3. SAT | SAT solving and a verified checker for unsatisfiability certificates |
 | 4. Euclid | Formal proofs of geometric propositions |

@@ -79,7 +79,7 @@ All read-only. They are the spec and the answer key, never code we change to win
     ├── lean-toolchain      # pinned: leanprover/lean4:v4.31.0 (current stable)
     ├── lakefile.toml       # the Principia library — pure Lean 4, NO Mathlib (deps enter via sub-projects)
     ├── Principia/          # THE ARTIFACT — one Lean library, the modules below
-    │   ├── Logic/          #   syntax · semantics (propositional + FOL)     (the shared spine)
+    │   ├── Logic/          #   syntax · semantics (propositional core)     (the shared spine)
     │   ├── NatDed/         #   natural-deduction system + prover            (Course 1)
     │   ├── Resolution/     #   CNF · resolution system + prover             (Course 2)
     │   ├── Sat/            #   CNF · DPLL/CDCL · verified LRAT checker       (Course 3)
@@ -95,7 +95,7 @@ All read-only. They are the spec and the answer key, never code we change to win
     └── 05-goedel/
 ```
 
-The `Logic/` core (syntax + semantics, propositional and first-order) built in Course 1 is the **shared
+The `Logic/` core (propositional syntax and semantics) built in Course 1 is the **shared
 spine** reused by `NatDed/`, `Resolution/`, `Sat/`, and `Goedel/`; `Euclid/` sits on Mathlib +
 LeanEuclid instead. So `Principia` is genuinely one accumulating library, not a pile of toys. Verified
 code from a concept **graduates** into `Principia/` so later concepts import it.
@@ -175,9 +175,10 @@ complete).
 | 1.2 Semantics: valuations, `eval`, `⊨`, tautology | a truth-table checker you run | |
 | 1.3 Natural deduction `Γ ⊢ φ` (inductive rules) | a checked ND proof of Peirce's law | |
 | 1.4 **Soundness** `Γ ⊢ φ → Γ ⊨ φ` | — | ✅ induction on derivations |
-| 1.5 The **prover** (proof search), FOL-ready data | `#eval prove φ` returns a derivation | |
-| 1.6 **Completeness (propositional)** `Γ ⊨ φ → Γ ⊢ φ` | `⊢ φ ↔ ⊨ φ`; verified decision procedure | ✅ (hard) Lindenbaum / max-consistent sets |
-| 1.7 *(stretch)* lift to first-order: terms, quantifiers, substitution | prover runs on FOL (semi-decidable) | soundness extends; **FOL completeness = stretch (Henkin)** |
+| 1.5 Initial, fuel-bounded proof search | typed derivations on success; failure can miss valid formulas | soundness of successful results |
+| 1.6 **Completeness (closed propositional case)** | executable validity-to-derivation construction | ✅ Kalmár row proofs and variable elimination |
+| 1.7 **Complete propositional solver** | `solve` / `proveComplete`: a derivation for every tautology, certified invalidity otherwise | ✅ certified finite table, soundness, algorithmic completeness, structural termination |
+| 1.8 *(stretch)* first-order terms, quantifiers, substitution | separate semi-decision procedure | soundness extends; FOL completeness via Henkin remains a stretch |
 
 *Reference:* FFL-Foundation (`Classical.soundness`/`.completeness`, full FOL completeness via Henkin);
 Logic and Proof. **Milestone M1.**
@@ -259,7 +260,8 @@ Paulson (Isabelle/HF); Popescu–Traytel (the abstract pattern); Yanofsky/Lawver
 ## 6. Milestones
 
 - **M0** — setup green; the learn-by-doing loop works; first proof. *(Course 0)*
-- **M1** — machine-checked **soundness** of natural deduction + a running prover. *(Course 1)*
+- **M1** — a complete, terminating propositional solver returning natural-deduction certificates,
+  with machine-checked soundness and completeness. *(Course 1)*
 - **M2** — a **refutation-complete resolution prover** + a verified propositional decision procedure.
   *(Course 2)*
 - **M3** — a **verified UNSAT certificate checker** with a working solver front-end. *(Course 3)*
@@ -270,7 +272,7 @@ Paulson (Isabelle/HF); Popescu–Traytel (the abstract pattern); Yanofsky/Lawver
 
 ## 7. Honest difficulty flags
 
-- **ND FOL completeness** (1.7): hard (Henkin) — a clearly-marked stretch, not a core deliverable.
+- **ND FOL completeness** (1.8): hard (Henkin) — a clearly-marked stretch, not a core deliverable.
 - **Resolution FOL refutation-completeness** (2.6): hard (Herbrand + lifting lemma) — a stretch; the
   FOL *prover itself* (with unification) is in scope, the completeness proof for it is the reach.
 - **Full CDCL verification**: infeasible at course scope — the **LRAT checker** is the right target.

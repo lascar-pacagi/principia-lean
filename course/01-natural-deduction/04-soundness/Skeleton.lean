@@ -2,13 +2,11 @@ import Principia.NatDed.Basic
 import Principia.Logic.Semantics
 
 /-!
-# 04-soundness — Skeleton  (THIS IS YOUR FILE)
+# 04-soundness — Your exercises
 
-The Boolean helper lemmas are GIVEN. Prove `soundness` (induction on the derivation) and the corollary
-`tautology_of_proof` — replace each `sorry`.
-
-Run:  make lab C=01-natural-deduction/04-soundness
-Stuck? See §4 "Prove it" and §5 "Hints for the skeleton" in `explainer.qmd`.
+Run: make lab C=01-natural-deduction/04-soundness
+See §6 for statements, §7 for hints, and §8 for worked corrections.
+Optional exercises have their own skeleton and answer key under optional/.
 -/
 set_option warningAsError true
 open scoped Principia.Form Principia
@@ -43,12 +41,9 @@ theorem byContra_eval {v : Nat → Bool} {a : Form}
 
 /-! Your two theorems. -/
 
--- Soundness: induct on `d`; in each case show the conclusion's value is `true`, using the helpers
--- above (and `ih`/`sat_cons` for the rules that extend the context: impI, orE, raa).
 theorem soundness {Γ : List Form} {φ : Form} (d : Γ ⊢ φ) : Entails Γ φ := by
   sorry
 
--- A closed proof certifies a tautology (specialise soundness to the empty context).
 theorem tautology_of_proof {φ : Form} (d : [] ⊢ φ) : Tautology φ := by
   sorry
 

@@ -1,0 +1,331 @@
+---
+title: "1.7 — A complete, terminating propositional solver"
+---
+
+> **Where you are.** We have a finite truth table, sound derivations, and an executable
+> validity-to-derivation construction. This lesson connects them into a total solver. A
+> positive result carries a proof tree; a negative result means invalidity, not exhausted fuel.
+
+## 1. The question: how do we guarantee an answer?
+
+The first search tried only some rules. Increasing its fuel couldn't make it find the
+projection `(p ⋏ q) ⇒ p`. Instead of extending that strategy indefinitely, we use a complete
+finite method: exhaust the relevant valuations, then construct a derivation when all rows
+are true. This is an educational solver; exhaustive tables and the resulting proof trees
+can be large. The later SAT course studies more efficient methods.
+
+
+```lean
+import Principia.NatDed.Solver
+open Principia Principia.Form
+open scoped Principia.Form Principia
+```
+
+
+We will keep `prove?` and `prove` as the limited search interfaces, and use `solve` and
+`proveComplete` for this complete procedure. Existing callers keep their original meaning.
+
+## 2. Certify that the table covers all valuations
+
+A formula's `maxVar` is an exclusive index bound. `eval_eq_of_agree` states that two valuations
+agreeing below that bound produce equal values. `allEnvs_cover` states that for every valuation,
+the finite table contains a valuation agreeing with it below the bound.
+
+For example, `var 0 ⋎ var 2` only observes indices 0 and 2. A valuation assigning true to
+index 100 and another assigning false there give the same formula value if they agree on 0
+and 2. Our bound is 3, so we enumerate 8 rows; the unused index 1 creates some redundant checks,
+but no relevant assignment is missing.
+
+Together these facts prove the supplied equivalence:
+
+```text
+taut?_eq_true_iff a : taut? a = true ↔ Tautology a
+```
+
+Its forward direction chooses a matching table row for an arbitrary valuation and uses the
+agreement lemma. Its reverse direction specializes universal validity to every listed row.
+This is the mathematical reason an infinite function type can be checked through a finite table.
+
+Here is how to use the equivalence on a concrete formula that has a false row:
+
+```lean
+example : ¬Tautology (Form.var 0 ⇒ Form.var 1) := by
+  intro h
+  have ht : taut? (Form.var 0 ⇒ Form.var 1) = true :=
+    (taut?_eq_true_iff _).mpr h
+  have hf : taut? (Form.var 0 ⇒ Form.var 1) = false := by
+    rfl
+  rw [hf] at ht
+  contradiction
+```
+
+Assuming validity would force the finite check to be true. But the concrete check computes
+to false. Rewriting gives `false = true`, an impossible equality.
+
+## 3. Return evidence for either answer
+
+The supplied result type has two constructors:
+
+```text
+SolveResult.valid   : ([] ⊢ a) → SolveResult a
+SolveResult.invalid : (¬Tautology a) → SolveResult a
+```
+
+The positive branch contains a derivation of the input formula. The negative branch contains
+a proof that it is not a tautology. Both refer to that same input a: the result is indexed by
+its formula. The negative branch doesn't merely record a failed search.
+
+`SolveResult.isValid` projects these constructors to `true` or `false` for display. The optional
+interface `proveComplete a` instead returns `some d` for a valid formula and `none` for an
+invalid one. Unlike the initial search's `none`, this negative result is justified by completeness.
+
+The solver's definition must make a **dependent conditional**:
+
+```text
+if h : taut? a = true then
+  ... use h to build a positive result ...
+else
+  ... use h : ¬(taut? a = true) to build a negative result ...
+```
+
+The name h records the condition as evidence in the chosen branch. A smaller
+example about equality of natural numbers shows the same syntax:
+
+```lean
+def reportZero (n : Nat) : n = 0 ∨ n ≠ 0 :=
+  if h : n = 0 then
+    Or.inl h
+  else
+    Or.inr h
+```
+
+In the first branch, h proves `n = 0`, so `Or.inl h` builds the left alternative. In the
+second, h proves `n ≠ 0`, so `Or.inr h` builds the right alternative. Our solver will also
+use its branch evidence: the positive branch needs evidence of validity for `completeness`,
+and the negative branch must refute any proposed validity proof using the certified table.
+
+## 4. Follow the full pipeline
+
+For `(p ⋏ q) ⇒ p`, the table has four rows and all are true. The certified equivalence supplies
+`Tautology ((p ⋏ q) ⇒ p)`. The executable completeness construction builds row derivations,
+combines them using classical case splits, and returns the final derivation in `valid`.
+
+For `p ⇒ q`, the row p true, q false makes the table fail. If someone supplied a validity
+proof, the equivalence would force the table check to be true, contradicting that failure.
+This refutation is stored in `invalid`. Soundness also rules out any closed derivation.
+
+```lean
+#eval (solve ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 0)).isValid
+#eval (solve (Form.var 0 ⇒ Form.var 1)).isValid
+#eval (proveComplete (Form.var 0 ⋎ ∼Form.var 0)).isSome
+```
+
+The results are true, false, and true. These observations only show the constructor tag;
+the positive result also carries the derivation itself. We can inspect that tree:
+
+```lean
+def certificateNodes (a : Form) : Option Nat :=
+  match solve a with
+  | .valid d => some d.nodeCount
+  | .invalid _ => none
+
+#eval certificateNodes ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 0)
+```
+
+`nodeCount` recurses through the returned derivation and counts rule applications. This
+forces the computation of an actual certificate, not merely its Boolean tag.
+
+## 5. Three guarantees, three separate obligations
+
+**Soundness** uses the type of the returned tree and the theorem from lesson 1.4: a positive
+result implies validity. **Completeness** uses the certified table and the construction from
+lesson 1.6: every tautology gets a positive result. **Termination** comes from the implementation's
+structural recursion, which Lean checks when accepting executable definitions:
+
+| Component | What decreases or is traversed? |
+|---|---|
+| `eval`, `maxVar`, and `kalmar` | Formula children. |
+| `allEnvs` and `elim` | The natural-number variable bound. |
+| `List.all` | A finite list of rows. |
+| `solve` | Calls those total definitions; no recursive search loop. |
+
+There is no user-chosen fuel and no `partial`, `unsafe`, or `noncomputable` escape in this
+pipeline. A computation may be expensive, but no input is abandoned because a search budget
+was exhausted. The theorem about negative answers must use both semantic soundness and the
+algorithm's success on every tautology; the initial search didn't have that second guarantee.
+
+## 6. Prove it
+
+Open `Skeleton.lean`. The supporting definitions are supplied; complete these declarations.
+The worked answers are after the hints.
+
+```bash
+make lab C=01-natural-deduction/07-complete-solver
+```
+
+```lean
+def solve (φ : Form) : SolveResult φ := by
+  sorry
+```
+
+```lean
+theorem solve_sound {φ : Form} (h : (solve φ).isValid = true) : Form.Tautology φ := by
+  sorry
+```
+
+```lean
+theorem solve_complete {φ : Form} (h : Form.Tautology φ) :
+    (solve φ).isValid = true := by
+  sorry
+```
+
+```lean
+theorem solve_invalid_iff (φ : Form) :
+    (solve φ).isValid = false ↔ ¬Nonempty ([] ⊢ φ) := by
+  sorry
+```
+
+The required status determines whether the lab succeeds. Optional placeholders are reported
+separately in yellow when terminal colors are available; required success is green.
+
+## 7. Hints
+
+**`solve`.** Split on the finite table using a named condition. Convert a positive check into validity, then into a derivation. Refute a hypothetical validity proof in the negative branch.
+
+**`solve_sound`.** Split on the result constructor. A returned tree has the exact type needed by semantic soundness; the negative branch contradicts the success hypothesis.
+
+**`solve_complete`.** Use the reverse direction of the certified table equivalence. Your solver should then compute into its positive branch.
+
+**`solve_invalid_iff`.** Forward: a hypothetical derivation would imply validity, then algorithmic success, contradicting the negative tag. Reverse: split on the result and rule out its positive constructor.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises first. These proofs match `Solution.lean`, checked by `make test`.
+
+### `solve`
+
+```lean
+def solve (φ : Form) : SolveResult φ :=
+  if h : Form.taut? φ = true then
+    .valid (Form.completeness ((Form.taut?_eq_true_iff φ).mp h))
+  else
+    .invalid (fun ht => h ((Form.taut?_eq_true_iff φ).mpr ht))
+```
+
+The dependent conditional supplies evidence about the exact table call. The positive branch builds a derivation with completeness; the negative branch refutes validity through the table equivalence.
+
+### `solve_sound`
+
+```lean
+theorem solve_sound {φ : Form} (h : (solve φ).isValid = true) : Form.Tautology φ := by
+  cases hs : solve φ with
+  | valid d => exact Form.tautology_of_proof d
+  | invalid hn => simp [hs, SolveResult.isValid] at h
+```
+
+The positive result carries a derivation and hence guarantees validity. In the negative case, the Boolean success hypothesis simplifies to an impossible equality.
+
+### `solve_complete`
+
+```lean
+theorem solve_complete {φ : Form} (h : Form.Tautology φ) :
+    (solve φ).isValid = true := by
+  simp [solve, (Form.taut?_eq_true_iff φ).mpr h, SolveResult.isValid]
+```
+
+Validity forces the finite table to be true. Rewriting that condition makes the solver choose `valid`, whose tag computes to true.
+
+### `solve_invalid_iff`
+
+```lean
+theorem solve_invalid_iff (φ : Form) :
+    (solve φ).isValid = false ↔ ¬Nonempty ([] ⊢ φ) := by
+  constructor
+  · intro h ⟨d⟩
+    have ht := solve_complete (Form.tautology_of_proof d)
+    rw [h] at ht
+    contradiction
+  · intro hn
+    cases hs : solve φ with
+    | valid d => exact False.elim (hn ⟨d⟩)
+    | invalid h => rfl
+```
+
+A closed derivation gives validity, and completeness of the algorithm gives a true tag, contradicting a false tag. Conversely, if no derivation exists, a positive constructor would provide one; therefore only the negative constructor is possible.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`; the same lab command checks it separately. These exercises have
+their own verified answer key in `optional/Solution.lean`.
+
+```lean
+theorem entails_from_solver (a b : Form)
+    (h : (solve (a ⇒ b)).isValid = true) : Entails [a] b := by
+  sorry
+```
+
+*Hint:* Convert success on the implication into its semantic truth, then use the supplied context evidence.
+
+
+```lean
+theorem solver_agrees_with_table (a : Form) : (solve a).isValid = taut? a := by
+  sorry
+```
+
+*Hint:* Split on the table result; use completeness for true and soundness to rule out a true solver tag when the table is false.
+
+
+Read each statement as an input/output contract. Identify what evidence is already available
+and what result must be built. You may reuse the proved library results from this lesson.
+
+## 10. Worked corrections to the optional exercises
+
+### `entails_from_solver`
+
+```lean
+theorem entails_from_solver (a b : Form)
+    (h : (solve (a ⇒ b)).isValid = true) : Entails [a] b := by
+  intro v hΓ
+  have hi := solve_sound h v
+  rw [eval_imp] at hi
+  exact hi (hΓ a (by simp))
+```
+
+Algorithmic success on a ⇒ b gives universal truth of that implication. At an arbitrary valuation satisfying [a], `eval_imp` turns this truth into a function taking truth of a to truth of b. The context evidence supplies its input. This extends the closed solver result to this specific entailment.
+
+
+### `solver_agrees_with_table`
+
+```lean
+theorem solver_agrees_with_table (a : Form) : (solve a).isValid = taut? a := by
+  cases ht : taut? a with
+  | true =>
+    exact solve_complete ((taut?_eq_true_iff a).mp ht)
+  | false =>
+    cases hs : (solve a).isValid with
+    | false => rfl
+    | true =>
+      have ht' := (taut?_eq_true_iff a).mpr (solve_sound hs)
+      rw [ht] at ht'
+      contradiction
+```
+
+Split on the finite table. If it is true, the certified equivalence gives validity, and algorithmic completeness forces a true solver tag. If it is false, a true tag would imply validity by soundness and thus a true table check, a contradiction. Both Boolean observations therefore agree.
+
+
+## 11. Conclusion
+
+Course 1 now ends with a running complete solver. The rules are sound and complete for
+classical propositional semantics; the final algorithm decides every finite propositional input
+and returns an actual derivation on success. Its negative answers certify invalidity. Its total
+definitions establish termination without a guessed search budget. The earlier limited search
+remains useful for understanding strategies, while the final solver meets the full specification.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: compare the
+  propositional syntax, semantics, and natural-deduction chapters with these definitions.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  review inductive types, dependent functions, and recursion as needed.
+- **Next: Course 2.** A resolution prover uses another proof system and reuses our syntax
+  and semantics. First-order logic is a separate extension, not a capability of this solver.

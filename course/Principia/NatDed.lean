@@ -3,6 +3,7 @@ import Principia.NatDed.Soundness
 import Principia.NatDed.Prover
 import Principia.NatDed.Kalmar
 import Principia.NatDed.Completeness
+import Principia.NatDed.Solver
 
 /-!
 # Principia.NatDed — natural-deduction system + prover (Course 1)

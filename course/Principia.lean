@@ -10,7 +10,7 @@ import Principia.Goedel
 
 The accumulating artifact of this course. Modules graduate in as each course completes:
 
-* `Principia.Logic`      — syntax & semantics (propositional + FOL): the shared spine
+* `Principia.Logic`      — syntax & semantics (propositional core): the shared spine
 * `Principia.NatDed`     — natural-deduction system + prover            (Course 1)
 * `Principia.Resolution` — CNF + resolution system + prover             (Course 2)
 * `Principia.Sat`        — DPLL/CDCL + verified LRAT checker            (Course 3)

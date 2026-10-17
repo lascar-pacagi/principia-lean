@@ -7,13 +7,15 @@ import Principia.NatDed.Soundness
 `make test` kernel-checks this; `make axioms` audits it. Graduates into `Principia.NatDed.Completeness`.
 Read to understand *why*, not to copy.
 -/
+set_option warningAsError true
+
 open scoped Principia.Form Principia
 
 namespace Principia.Form
 
 -- Pick `n = maxVar φ` so every atom of `φ` is covered. For each `v`, `(kalmar …).1 (h v)` proves `φ`
 -- from `litCtx v n` (using `h v : eval v φ = true`); `elim` collapses all those contexts to `[]`.
-noncomputable def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ :=
+def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ :=
   elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))
 
 theorem provable_iff_tautology {φ : Form} : Nonempty ([] ⊢ φ) ↔ Tautology φ :=

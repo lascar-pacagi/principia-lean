@@ -14,7 +14,7 @@ open scoped Principia.Form Principia
 /-- **Completeness** (closed case): every tautology has a closed derivation.
     For each valuation, Kalmár's lemma gives a proof from that valuation's literals; `elim` collapses
     all of them to the empty context. -/
-noncomputable def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ :=
+def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ :=
   elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))
 
 /-- **The loop closes**: provability and validity coincide. (`mp` is soundness, `mpr` completeness.) -/

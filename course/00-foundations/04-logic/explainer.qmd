@@ -1,258 +1,1581 @@
 ---
-title: "04 — Logic, named: natural deduction, classical vs constructive, and semantics"
+title: "04 — Logic, named: natural deduction, classical reasoning, and truth tables"
 ---
 
-> **Where you are.** You can already build and break every connective (`02`) and reason by induction
-> over syntax trees (`03`). This lesson *names the system* you've been using — **natural deduction** —
-> lines its rules up against Lean's tactics, draws the **constructive/classical** boundary (and shows
-> what crossing it costs), and introduces the **semantics** of propositional logic: valuations, truth
-> tables, validity `⊨`. Everything here is the blueprint for **Course 1**, where these rules become a
-> data type, a *prover* searches for proofs built from them, and we prove that prover **sound and
-> complete** against exactly the semantics below. This is the bridge from "using Lean" to "building the
-> thing Lean is."
+> **Where you are.** You have built proofs of implications, conjunctions, disjunctions, and
+> negations in lesson 02. In lesson 03, you defined functions on expression trees and proved
+> properties of them by induction. Now we connect these skills: a proof also has a tree structure,
+> and we can ask whether its rules preserve truth. We will distinguish constructing a proof,
+> reasoning classically, and evaluating a formula under an assignment of truth values.
 
 ## 1. The question
 
-Two questions have been hiding under everything you've done.
+Suppose someone hands us the claim:
 
-1. **What is a proof, as an object?** You've been assembling proofs tactic by tactic. But a logician
-   would say a proof is a *tree of inference rules*. What are those rules, exactly, and how do they line
-   up with `intro`/`apply`/`cases`?
-2. **What does a proof guarantee?** A proof of `p → p` feels "obviously valid." Valid *in what sense*?
-   There's a second notion of truth — a formula being true under every assignment of truth values — and
-   the deep fact is that it coincides with provability. Pinning that down is the whole point of Course 1.
+> If both the key and the code are available, then the key is available.
 
-## 2. Natural deduction, named
+There are two ways to check it.
 
-Write `Γ ⊢ φ` for "**from the assumptions `Γ`, the formula `φ` is provable.**" `Γ` is a set of
-hypotheses (what you've assumed so far); `⊢` is the *syntactic* "provable" turnstile. Natural deduction
-is a fixed list of **inference rules**, each of the form "from these `⊢`-facts, conclude this one." For
-each connective there's an **introduction** rule (how to *prove* it) and an **elimination** rule (how to
-*use* it) — the same intro/elim pairing from `02`, now written formally:
+We can **give a proof**: assume we have evidence of both facts, take the evidence that the key is
+available, and return it. This is a sequence of justified steps, independent of whether anyone
+actually has a key or a code.
+
+We can also **check truth values**: try every combination of key available/unavailable and code
+available/unavailable. In every combination, the implication comes out true. This is a finite
+calculation with a truth table.
+
+These approaches raise different questions:
+
+- What steps are we allowed to use when constructing a proof?
+- How do we calculate a formula's truth value?
+- If the calculation says a formula is always true, can we construct a proof of it?
+
+The first question leads to **natural deduction**, a system of proof rules. The second leads to
+**semantics**, the interpretation of formulas. The third asks how those two descriptions relate.
+We will take them one at a time.
+
+## 2. Natural deduction: naming the proof steps
+
+### 2.1 Reading an inference rule
+
+A **context** is the collection of assumptions currently available. Logicians often name it
+with the Greek letter `Γ` (gamma). Write:
 
 ```text
-  assumption            (→I)  Γ, p ⊢ q          (→E)  Γ ⊢ p → q    Γ ⊢ p
-  ──────────                 ────────────             ─────────────────────
-  Γ, φ ⊢ φ                   Γ ⊢ p → q                       Γ ⊢ q
-
-  (∧I) Γ ⊢ p   Γ ⊢ q    (∧E) Γ ⊢ p ∧ q         (∨I) Γ ⊢ p              (∨E) Γ ⊢ p∨q  Γ,p⊢r  Γ,q⊢r
-       ────────────          ──────────              ──────────              ───────────────────────
-       Γ ⊢ p ∧ q             Γ ⊢ p  (and q)          Γ ⊢ p ∨ q              Γ ⊢ r
+Γ ⊢ r
 ```
 
-A **proof** is a *tree* built by stacking these rules, with leaves that are `assumption`. For example,
-here is a complete derivation of `⊢ p → (q → p)`:
+for “from the assumptions in Γ, we can derive r.” The symbol `⊢` is read “proves” or “derives.”
+For example:
 
 ```text
-              ───────────── assumption
-              p, q ⊢ p
-            ─────────────── (→I)
-            p ⊢ q → p
-          ───────────────── (→I)
-          ⊢ p → (q → p)
+p ∧ q ⊢ p
 ```
 
-Read bottom-up, that's exactly what `by intro hp; intro hq; exact hp` does. The correspondence is exact:
+says that from a conjunction we can derive its left component. It does not assert `p` without
+an assumption. In Lean, the same situation looks like:
 
-| Inference rule | What it does | Lean tactic |
+```text
+p q : Prop
+h : p ∧ q
+⊢ p
+```
+
+In a Lean proof state, the hypotheses above `⊢` supply the context. In the notation on paper,
+we put the context to the left of `⊢`. Paper contexts usually list propositions; Lean also gives
+names, such as `h`, to their proofs.
+
+An **inference rule** describes a permitted step. Its premises go above a horizontal line;
+its conclusion goes below. For example:
+
+```text
+Γ ⊢ p       Γ ⊢ q
+───────────────── ∧ introduction
+     Γ ⊢ p ∧ q
+```
+
+Read it: “if we can prove p from Γ and prove q from Γ, we can prove p ∧ q from Γ.” A rule with
+two premises requires both. The rule doesn't prove its premises for us.
+
+### 2.2 Build and use, now called introduction and elimination
+
+The distinction from lesson 02 has standard names:
+
+- **Introduction — Build:** construct evidence for a logical claim.
+- **Elimination — Use:** extract or derive something from existing evidence.
+
+For conjunction, we can see both in one example:
+
+```lean
+example (p q : Prop) (h : p ∧ q) : q ∧ p := by
+  have hp : p := h.1
+  have hq : q := h.2
+  constructor
+  · exact hq
+  · exact hp
+```
+
+The first two lines **use** `h`: `.1` and `.2` obtain the conjunction's components. This is
+conjunction elimination. Then `constructor` **builds** the requested conjunction: it selects
+`And.intro` and leaves one goal for each component, first `q`, then `p`. This is conjunction
+introduction.
+
+For implication, compare the two directions of work:
+
+```lean
+example (p q : Prop) (hpq : p → q) : p → p ∧ q := by
+  intro hp
+  have hq : q := hpq hp
+  exact ⟨hp, hq⟩
+```
+
+The initial goal is `p → p ∧ q`. `intro hp` **builds an implication**: assume its input,
+`hp : p`, and work toward its output, `p ∧ q`. In the next line, `hpq hp` **uses an implication**:
+`hpq` takes a proof of `p` and returns a proof of `q`. Naming the result `hq` makes it available
+for the final conjunction. `⟨hp, hq⟩` supplies both components.
+
+Implication elimination is also called **modus ponens**. These are two ways to use the same rule:
+
+```lean
+example (p q : Prop) (hpq : p → q) (hp : p) : q := by
+  exact hpq hp
+
+example (p q : Prop) (hpq : p → q) (hp : p) : q := by
+  apply hpq
+  exact hp
+```
+
+`exact hpq hp` provides the completed proof of `q`. `apply hpq` works backward: since `hpq`
+can produce `q` from `p`, it replaces the goal `q` with the remaining requirement `p`.
+
+For disjunction, **building** and **using** have different requirements:
+
+```lean
+example (p q : Prop) (hp : p) : p ∨ q := by
+  left
+  exact hp
+```
+
+This proof **builds** an “or.” Initially, we have:
+
+```text
+hp : p
+⊢ p ∨ q
+```
+
+To prove `p ∨ q`, we can supply either a proof of `p` or a proof of `q`. The tactic `left`
+says: “I choose to prove the alternative on the left, namely `p`.” The goal becomes:
+
+```text
+hp : p
+⊢ p
+```
+
+`left` has chosen an alternative; it hasn't supplied its proof. The next line, `exact hp`,
+supplies the proof of `p` we already have and finishes the goal.
+
+`Or.inl` is the constructor that builds a proof of `p ∨ q` from a proof of `p`. The two
+tactics above can therefore also be written as one line:
+
+```lean
+example (p q : Prop) (hp : p) : p ∨ q := by
+  exact Or.inl hp
+```
+
+Now compare this with **using** an existing “or”:
+
+```lean
+example (p q r : Prop) (h : p ∨ q)
+    (fromP : p → r) (fromQ : q → r) : r := by
+  cases h with
+  | inl hp =>
+    exact fromP hp
+  | inr hq =>
+    exact fromQ hq
+```
+
+Here `cases h` opens two branches because either alternative may be
+present. The left branch receives `hp : p`; the right branch receives `hq : q`. Both must
+produce the same conclusion, `r`.
+
+Finally, negation is still an implication to `False`. We can build one while using another:
+
+```lean
+example (p q : Prop) (hnp : ¬p) : ¬(p ∧ q) := by
+  intro hpq
+  exact hnp hpq.1
+```
+
+The goal `¬(p ∧ q)` means `(p ∧ q) → False`. `intro hpq` gives `hpq : p ∧ q` and leaves goal
+`False`. We **use** its component `hpq.1 : p`, then **use** `hnp : p → False` to derive the
+contradiction. No new rule for negation is needed.
+
+### 2.3 A whole proof is a tree of rules
+
+Here is a proof with two assumptions introduced along the way:
+
+```lean
+example (p q : Prop) : p → (q → p ∧ q) := by
+  intro hp
+  intro hq
+  constructor
+  · exact hp
+  · exact hq
+```
+
+After the two introductions, both `hp : p` and `hq : q` are available. On paper, the entire
+proof is this tree:
+
+```text
+p, q ⊢ p             p, q ⊢ q
+───────────────────────────── ∧ introduction
+        p, q ⊢ p ∧ q
+     ──────────────────────── → introduction (discharge q)
+        p ⊢ q → p ∧ q
+     ──────────────────────── → introduction (discharge p)
+          ⊢ p → (q → p ∧ q)
+```
+
+The top leaves use available assumptions. The next step pairs their evidence. Each implication
+introduction then **discharges** one assumption: it packages the work under that assumption
+into a function, so the final claim no longer requires the assumption as an external input.
+The empty space to the left of the final `⊢` means that no logical assumptions remain.
+
+Read from the bottom upward, the tree describes the goals generated by the tactics. Read from
+the top downward, it describes how the completed proofs fit together.
+
+In Course 1, we will make such trees explicit Lean data. An inductive type will have a
+constructor for each permitted rule. Lean's own proof terms are checked by its kernel; our
+smaller proof-tree type will describe the particular propositional system we choose to study.
+
+## 3. Constructive and classical reasoning
+
+### 3.1 What constructive proofs provide
+
+The introduction and elimination rules above support **constructive** proofs:
+
+- To build `p ∧ q`, supply evidence of both claims.
+- To build `p ∨ q`, choose a constructor and supply evidence of that alternative.
+- To build `p → q`, explain how evidence of `p` produces evidence of `q`.
+- To build `¬p`, explain how evidence of `p` leads to `False`.
+
+For example, we can prove a double negation without any classical step:
+
+```lean
+example (p : Prop) (hp : p) : ¬¬p := by
+  intro hnp
+  exact hnp hp
+```
+
+The goal `¬¬p` means `(p → False) → False`. After `intro hnp`, we have `hnp : p → False`
+and goal `False`. Applying it to our existing proof `hp : p` finishes the proof. We have built
+an explicit way to refute any proposed refutation of `p`.
+
+This does not give a general way to recover evidence of `p` when all we have is `¬¬p`.
+Constructing evidence of a claim and refuting its negation are different tasks in constructive
+logic.
+
+### 3.2 Excluded middle: reasoning through two alternatives
+
+Classical logic permits the **law of excluded middle**, `p ∨ ¬p`, for an arbitrary proposition
+`p`. Lean provides it as:
+
+```text
+Classical.em (p : Prop) : p ∨ ¬p
+```
+
+Writing `Classical.em p` gives us a proof of `p ∨ ¬p`. We can use that proof
+with `cases`, just like any other “or.” Here is a complete example with a different goal:
+
+```lean
+example (p q : Prop) (hpq : p → q) : ¬p ∨ q := by
+  cases Classical.em p with
+  | inl hp =>
+    right
+    exact hpq hp
+  | inr hnp =>
+    left
+    exact hnp
+```
+
+Initially we have `hpq : p → q` and goal `¬p ∨ q`. `cases Classical.em p` **uses** the
+classical disjunction, giving two cases:
+
+```text
+Left branch:                    Right branch:
+hp : p                          hnp : ¬p
+hpq : p → q                     hpq : p → q
+⊢ ¬p ∨ q                        ⊢ ¬p ∨ q
+```
+
+In the left branch, `hpq hp : q` lets us **build** the right alternative of the goal. In the
+right branch, `hnp : ¬p` lets us **build** the left alternative. Each branch explains how to
+finish under its own assumption.
+
+**This is not an algorithm deciding every proposition.** `Classical.em p` provides a logical
+principle for proofs; it doesn't supply an executable test that computes whether any chosen
+`p` is true. Some particular propositions have computational decision procedures, such as
+an equality of natural numbers. Excluded middle applies even when no such procedure is available.
+
+### 3.3 Proof by contradiction: the goal determines the assumption
+
+Lean also provides the classical principle `Classical.byContradiction`. For a goal `q`, it
+lets us finish by showing that assuming `¬q` leads to `False`:
+
+```text
+Current goal: q
+
+apply Classical.byContradiction
+
+New goal: ¬q → False
+```
+
+Then `intro hnq` names the input of that implication. Its type is `¬q` because it comes from
+the goal; the spelling `hnq` is our choice.
+
+Here is the whole mechanism in a proof:
+
+```lean
+example (p q : Prop) (h : ¬q → ¬p) (hp : p) : q := by
+  apply Classical.byContradiction
+  intro hnq
+  have hnp : ¬p := h hnq
+  exact hnp hp
+```
+
+After `intro hnq`, the proof state is:
+
+```text
+p q : Prop
+h : ¬q → ¬p
+hp : p
+hnq : ¬q
+⊢ False
+```
+
+`h hnq` gives a proof of `¬p`, named `hnp`. But `hp : p` is already available, so
+`hnp hp : False` finishes this branch. The classical principle is what allows us to conclude
+`q` from this contradiction.
+
+Why did we need a classical principle here, when other proofs also end in a contradiction?
+Look at **the goal before we start looking for that contradiction**.
+
+For comparison, here is a proof whose goal is a negation, `¬p`:
+
+```lean
+example (p q : Prop) (hpq : p → q) (hnq : ¬q) : ¬p := by
+  intro hp
+  have hq : q := hpq hp
+  exact hnq hq
+```
+
+The initial goal `¬p` means `p → False`. We are being asked to construct a function that
+takes a proof of `p` and produces a contradiction. Introducing that function's input with
+`intro hp` gives:
+
+```text
+hpq : p → q
+hnq : q → False
+hp : p
+⊢ False
+```
+
+`hpq hp` supplies a proof of `q`, named `hq`. Then `hnq hq` supplies `False`. This is
+exactly the function requested by the goal `p → False`, so no classical principle is needed.
+
+In the preceding classical proof, however, the initial goal was **`q`**, not a function
+ending in `False`. `Classical.byContradiction` allowed us to change tasks: instead of
+constructing a proof of `q` directly, we could assume `¬q` and derive a contradiction.
+That permission to conclude `q` from refuting `¬q` is the classical step.
+
+Both proofs end in a contradiction, but it plays a different role:
+
+| Initial goal | What we assume | Why a contradiction finishes the proof |
 |---|---|---|
-| assumption | use a hypothesis from `Γ` | `exact h` |
-| →I | to prove `p → q`, assume `p`, prove `q` | `intro` |
-| →E (modus ponens) | from `p → q` and `p`, get `q` | apply: `f hp` / `apply f` |
-| ∧I / ∧E | pair / project | `⟨_,_⟩`,`constructor` / `.1`,`.2` |
-| ∨I / ∨E | inject / case-split | `Or.inl`,`left` / `cases` |
-| ⊥E (ex falso) | from `False`, anything | `False.elim`,`exfalso` |
-| ¬I, ¬E | (since `¬p` *is* `p → False`, these are just →I/→E into `False`) | `intro` / apply |
+| `¬p`, meaning `p → False` | `hp : p` | Producing `False` constructs the function the goal asks for. |
+| `q` | `hnq : ¬q`, after applying `Classical.byContradiction` | The classical principle lets us conclude `q` from refuting its negation. |
 
-> **This is Course 1 in a nutshell.** There, `Γ ⊢ φ` stops being informal: we declare an `inductive`
-> type whose **constructors are exactly these rules**, so a *value* of that type **is** a proof tree.
-> Then a "prover" is a function that *searches* for such a value, and proving it correct means proving
-> things about the tree by induction — the very skill from `03`.
-
-## 3. Constructive vs classical
-
-Lean's logic is, by default, **constructive**: the rules in §2 only ever let you *build* evidence. The
-intended reading (called BHK) is operational:
-
-- a proof of `p ∧ q` is a proof of `p` *together with* a proof of `q`;
-- a proof of `p ∨ q` is a proof of `p` **or** a proof of `q`, *plus a tag saying which*;
-- a proof of `p → q` is a *procedure* turning any proof of `p` into one of `q`;
-- there is no proof of `False`.
-
-Under that reading, look at the **law of excluded middle**, `p ∨ ¬p`. To prove it you'd have to produce,
-*for every `p` uniformly*, either a proof of `p` or a proof of `¬p` — i.e. decide every proposition in
-advance. No such construction exists, so EM is **not provable** from the §2 rules. The same goes for
-double-negation elimination `¬¬p → p` and Peirce's law: each lets you conjure a proof of `p` from the
-mere impossibility of `¬p`, with no construction to back it.
-
-Classical logic simply *adds* one of these as a new rule (they're all interderivable). Lean keeps it in
-the `Classical` namespace so you opt in explicitly:
+**Reminder: `exfalso` changes the goal to `False`.** It means: “I will finish this goal by
+proving a contradiction.” This uses the rule that from a proof of `False`, we can derive
+any proposition. For example:
 
 ```lean
-Classical.em (p : Prop)            : p ∨ ¬p          -- excluded middle
-Classical.byContradiction          : ¬¬p → p          -- "assume ¬p, derive False, conclude p"
+example (p q : Prop) (hp : p) (hnp : ¬p) : q := by
+  exfalso
+  exact hnp hp
 ```
 
-(Note: the convenient `by_contra` *tactic* lives in Mathlib, which our core doesn't load — so here you
-use the term `Classical.byContradiction` directly.)
-
-**Crossing the line is visible — and it has a price.** Every classical proof, when you run
-`#print axioms` on it, lists `Classical.choice`:
-
-```lean
-#print axioms Classical.em       -- ⇒ depends on Classical.choice (and propext, Quot.sound)
-```
-
-That's not a leak or a cheat — `Classical.choice` is one of the three axioms the whole Lean/Mathlib world
-accepts. It's simply *honest bookkeeping*: the theorem genuinely used a classical principle. Our audit
-(`make axioms`) is happy with it; the only thing it ever rejects is `sorryAx`, the trace of a skipped
-proof. So: constructive proofs depend on *nothing*; classical proofs depend on `Classical.choice`; and
-you can always see which, at a glance.
-
-## 4. Semantics from zero
-
-So far "⊢" was about *building proofs*. There's a completely different, and much more concrete, notion of
-truth — **semantics** — that ignores proofs entirely and just computes.
-
-Fix the propositional variables (say `p`, `q`, …). A **valuation** `v` assigns each variable a truth
-value, `true` or `false`. Given `v`, the truth value of *any* formula is computed compositionally — this
-is the **truth table**:
+Initially, the proof state is:
 
 ```text
-  ⟦p⟧ᵥ      = v p
-  ⟦φ ∧ ψ⟧ᵥ  = ⟦φ⟧ᵥ  and  ⟦ψ⟧ᵥ
-  ⟦φ ∨ ψ⟧ᵥ  = ⟦φ⟧ᵥ  or   ⟦ψ⟧ᵥ
-  ⟦φ → ψ⟧ᵥ  = (not ⟦φ⟧ᵥ) or ⟦ψ⟧ᵥ
-  ⟦¬φ⟧ᵥ     = not ⟦φ⟧ᵥ
+hp : p
+hnp : ¬p
+⊢ q
 ```
 
-A formula is a **tautology**, written `⊨ φ`, if `⟦φ⟧ᵥ = true` for **every** valuation `v`; and `Γ ⊨ φ`
-("`Γ` semantically entails `φ`") if every valuation making all of `Γ` true also makes `φ` true. Because a
-formula has finitely many variables, "for every valuation" is a finite check — propositional logic is
-**decidable** by exhaustively trying all `2ⁿ` rows of the truth table.
+After `exfalso`, the hypotheses are unchanged and the goal is now `False`:
 
-You can watch that decision procedure run right now: over `Bool`, "for all valuations" is a finite `∀`,
-and `decide` evaluates it:
+```text
+hp : p
+hnp : ¬p
+⊢ False
+```
+
+Since `hnp : ¬p` means `hnp : p → False`, applying it to `hp` gives `hnp hp : False`.
+The line `exact hnp hp` supplies that contradiction and finishes the proof.
+
+`exfalso` doesn't find or create the contradiction for us: it only changes the goal. Unlike
+`Classical.byContradiction`, it doesn't introduce an assumption `¬q`. Here the existing
+hypotheses `hp` and `hnp` already provide a contradiction, so this proof is constructive.
+All these examples use Lean's core tools; no extra tactic import is needed.
+
+### 3.4 Build an intermediate proof with `have … := by`
+
+So far, a line such as `have hq : q := hpq hp` named a proof we could write as one expression.
+Sometimes we need several tactics to construct that intermediate proof. We can open a local
+proof with `by`, just as we do after a theorem statement:
+
+```text
+have name : proposition := by
+  ... tactics proving that proposition ...
+... continue the surrounding proof, with name now available ...
+```
+
+The surrounding goal is put aside while we prove the proposition announced after `:`.
+Finishing this local proof adds its result to the surrounding context. It doesn't finish
+the surrounding goal.
+
+Here is a complete example, different from the exercises. Suppose `hpq : p → q` and
+`hnq : ¬q`. We want **both** a proof of `¬p` and a proof of `¬q`. The second is already
+available; we will construct the first in a local proof:
 
 ```lean
-example : ∀ a b : Bool, (!(a && b)) = ((!a) || (!b)) := by decide   -- De Morgan, checked exhaustively
-#guard decide (∀ p : Bool, p || !p)                                  -- excluded middle, as a truth table
+example (p q : Prop) (hpq : p → q) (hnq : ¬q) : ¬p ∧ ¬q := by
+  have hnp : ¬p := by
+    intro hp
+    have hq : q := hpq hp
+    exact hnq hq
+  exact ⟨hnp, hnq⟩
 ```
 
-Notice excluded middle is a *theorem about truth values* with a one-line computational proof — but a
-*theorem about proofs* (`p ∨ ¬p` for arbitrary `Prop`) that needs a classical axiom. Two different
-turnstiles; §5 is about how they relate.
+**Before the `have`, the surrounding goal is a conjunction:**
 
-## 5. The bridge: soundness and completeness
+```text
+hpq : p → q
+hnq : ¬q
+⊢ ¬p ∧ ¬q
+```
 
-We now have two notions:
+**Inside `have hnp : ¬p := by`, the local goal is `¬p`:**
 
-- `Γ ⊢ φ` — there is a **proof** (a derivation tree built from §2's rules). *Syntactic.*
-- `Γ ⊨ φ` — `φ` is **true** under every valuation satisfying `Γ`. *Semantic.*
+```text
+hpq : p → q
+hnq : ¬q
+⊢ ¬p
+```
 
-The two central theorems of propositional logic connect them:
+We have access to the surrounding hypotheses, but `hnp` isn't available yet: it is the proof
+we are currently constructing. Since `¬p` means `p → False`, `intro hp` supplies the local
+input `hp : p` and changes this local goal to `False`:
 
-- **Soundness:** `Γ ⊢ φ ⟹ Γ ⊨ φ`. *Everything you can prove is actually true* — the rules never lie.
-  (Proved by induction on the derivation tree: check each rule preserves truth. Recognize the shape? It's
-  `eval_swap` from `03`, scaled up — "this operation on syntax respects the semantics.")
-- **Completeness:** `Γ ⊨ φ ⟹ Γ ⊢ φ`. *Everything true is provable* — the rules miss nothing.
+```text
+hpq : p → q
+hnq : ¬q
+hp : p
+⊢ False
+```
 
-Together, **`⊢ φ ⟺ ⊨ φ`**: provability and validity coincide. The payoff is huge: since `⊨` is decidable
-by truth tables, a **prover** that searches for `⊢`-derivations becomes a genuine *decision procedure* for
-logical truth — and soundness is what lets you *trust* its "yes."
+Now `hpq hp : q` supplies `hq`. Then `hnq hq : False` finishes the local proof of `¬p`.
+We have described a function taking any hypothetical proof of p to a contradiction.
 
-**This is precisely the spine of Courses 1–2.** Course 1 formalizes `Form`, `⟦·⟧`, `⊢` (natural
-deduction) and proves **soundness and completeness** for the propositional fragment — then builds a prover
-that works for first-order logic too. Course 2 does the analogous thing for *resolution*. Everything you
-prove past this point lives in the gap between these two turnstiles. (A nuance to file away: classical
-provability matches the Boolean truth-table semantics above; *constructive* provability has its own,
-richer "Kripke" semantics — but that's a road we won't need.)
+**Dedenting returns to the surrounding proof:**
+
+```text
+hpq : p → q
+hnq : ¬q
+hnp : ¬p
+⊢ ¬p ∧ ¬q
+```
+
+The conjunction goal is back, and the newly completed proof `hnp` is available. The local
+names `hp` and `hq` are no longer available: they belonged inside the proof of `¬p`.
+The final `exact ⟨hnp, hnq⟩` supplies both components of the conjunction.
+
+Indentation makes this structure visible:
+
+```text
+  have hnp : ¬p := by
+    intro hp                 -- inside the local proof
+    have hq : q := hpq hp     -- inside the local proof
+    exact hnq hq             -- finishes the local proof
+  exact ⟨hnp, hnq⟩            -- back in the surrounding proof
+```
+
+This technique lets us work forward: identify an intermediate proposition we need, prove it
+in its own block, then use its named proof. The local proposition can be a negation, an
+implication, a conjunction, or any other claim. Its stated type determines the local goal;
+we don't acquire that claim as an assumption without proving it.
+
+### 3.5 What an axiom report tells us
+
+An **axiom** is a foundational assumption used without a proof. `#print axioms` reports which
+such assumptions a particular Lean proof depends on, including those used by the theorems it
+calls. Let's separate two questions: which principles the proof uses, and whether it is finished.
+
+**The same statement can have different proofs.** Consider `p → p`. We can prove it by
+returning the evidence we receive:
+
+```lean
+theorem identityConstructive (p : Prop) : p → p := by
+  intro hp
+  exact hp
+
+#print axioms identityConstructive
+```
+
+The report says this proof does not depend on any axioms. `intro hp` supplies `hp : p`, and
+`exact hp` returns it. There is no classical step.
+
+We can also prove the same statement with a classical detour:
+
+```lean
+theorem identityClassical (p : Prop) : p → p := by
+  intro hp
+  apply Classical.byContradiction
+  intro hnp
+  exact hnp hp
+
+#print axioms identityClassical
+```
+
+After `intro hp`, the goal is `p`. We already have its proof, but here we choose to apply
+`Classical.byContradiction`: assume `hnp : ¬p`, then derive `False` using `hnp hp`.
+The report lists `Classical.choice`, `propext`, and `Quot.sound`, which are used in Lean's
+construction of this classical principle.
+
+The statement `p → p` therefore doesn't require classical reasoning: the first proof shows
+how to avoid it. Seeing `Classical.choice` in the second report tells us about **that proof's
+choices**, not that every proof of the statement would need it.
+
+**Using an axiom and reasoning classically are different things.** For example, Lean's
+axiom `propext` turns a logical equivalence between propositions into an equality:
+
+```lean
+theorem equivalenceToEquality (p q : Prop) (h : p ↔ q) : p = q := by
+  exact propext h
+
+#print axioms equivalenceToEquality
+```
+
+Here `h` says that `p` and `q` imply one another; `propext h` supplies their equality. The
+report lists `propext`. This proof uses an axiom, but it doesn't use excluded middle or proof
+by contradiction. Other library results can likewise introduce foundational dependencies.
+So “constructive” doesn't mean “the axiom report must be empty.”
+
+**What does our course command `make axioms` check?** It searches for three signs that a
+proof was skipped or an assumption was added in our files:
+
+1. **`sorry` outside learner skeletons.** The answer keys and library must contain completed
+   proofs. `Skeleton.lean` is exempt because its exercises are deliberately unfinished.
+2. **New `axiom` declarations in our code.** Such a declaration would assert a claim without
+   proving it. We use Lean's existing foundations rather than adding assumptions to solve exercises.
+3. **`sorryAx` in the reported dependencies.** When Lean accepts a `sorry` placeholder, it
+   records the skipped proof through a special axiom named `sorryAx`. A later theorem that uses
+   that unfinished result can inherit this dependency, even if its own body contains no `sorry`.
+
+For example, a theorem containing `by sorry` is still unfinished. A theorem that calls it is
+also relying on a skipped proof. That is what the `sorry` and `sorryAx` checks look for.
+
+By contrast, `identityClassical` above is complete: every step has been supplied, using a
+classical principle supported by Lean. It passes our audit, as does `identityConstructive`.
+The audit is checking for these holes and added declarations; it doesn't decide whether a
+statement could have been proved constructively.
+
+`make test` asks Lean to check all answer-key proofs. `make axioms` adds the checks above.
+Reading `#print axioms` then helps us understand which foundations each completed proof uses.
+
+## 4. Semantics: assigning truth values to formulas
+
+### 4.1 A valuation supplies the inputs
+
+So far, `p q : Prop` are propositions, and `hp : p` is evidence. For a truth table, we instead
+work with **propositional variables** and assign each a value, `true` or `false`. A **valuation**
+is one complete assignment of those values.
+
+For a formula using variables `p` and `q`, here are all four valuations:
+
+| Valuation | Value assigned to p | Value assigned to q |
+|---|---|---|
+| 1 | false | false |
+| 2 | false | true |
+| 3 | true | false |
+| 4 | true | true |
+
+At this stage, the letters in the table are variable labels in formulas we discuss on paper.
+In Course 1, we will represent formulas with an inductive type, as we represented arithmetic
+expressions with `Expr`. A valuation will then be an input to a recursive evaluation function.
+
+For example, take the formula `p ∧ (q ∨ ¬p)` under valuation 3:
+
+```text
+p has value true; q has value false.
+¬p has value false.
+q ∨ ¬p has value false or false, hence false.
+p ∧ (q ∨ ¬p) has value true and false, hence false.
+```
+
+Evaluation starts at the variables and combines their values according to the surrounding
+connectives. It does not search for a proof.
+
+### 4.2 Why implication has this truth table
+
+Boolean conjunction is true when both inputs are true; disjunction is true when at least one
+is true; negation reverses its input. Implication deserves a closer look:
+
+| p | q | p ∧ q | p ∨ q | ¬p | p → q |
+|---|---|---|---|---|---|
+| false | false | false | false | true | true |
+| false | true | false | true | true | true |
+| true | false | false | true | false | false |
+| true | true | true | true | false | true |
+
+The claim “if the key is available, the door can be opened” is violated by a situation where
+we have the key but cannot open the door. That is the `p = true`, `q = false` row. When the
+key is unavailable, that situation gives no counterexample to the conditional claim.
+
+This is the **material implication** of propositional logic. It records truth conditions;
+it doesn't assert that one event causes another. Its calculation is “not p, or q”:
+
+```text
+value(p → q) = (not value(p)) or value(q)
+```
+
+For the earlier key-and-code claim, `(p ∧ q) → p`, we get:
+
+| p | q | p ∧ q | (p ∧ q) → p |
+|---|---|---|---|
+| false | false | false | true |
+| false | true | false | true |
+| true | false | false | true |
+| true | true | true | true |
+
+Its last column is always true. A formula with this property is called a **tautology**.
+The formula `p → q` alone isn't a tautology: its table has a false row.
+
+### 4.3 Reading the semantic notation
+
+Write `⟦φ⟧ᵥ` for “the truth value of the formula φ under valuation v.” Here `φ` (phi) is a
+placeholder for an entire formula, such as `p ∧ q`; `v` names the valuation. For instance:
+
+```text
+If v assigns p = true and q = false:
+⟦p ∧ q⟧ᵥ = false
+⟦p ∨ q⟧ᵥ = true
+```
+
+Write `⊨ φ` when φ is true under **every** valuation: it is a tautology. Thus:
+
+```text
+⊨ (p ∧ q) → p
+```
+
+With assumptions, `Γ ⊨ φ` means: every valuation that makes all assumptions in Γ true also
+makes φ true. This is **semantic entailment**. For example:
+
+```text
+p → q, p ⊨ q
+```
+
+To check it, consider only rows where both assumptions hold. Since `p` must be true, the
+truth table for `p → q` forces `q` to be true too. Rows that fail an assumption cannot be
+counterexamples to the entailment.
+
+Keep the two symbols separate:
+
+| Notation | What must be supplied or checked? |
+|---|---|
+| `Γ ⊢ φ` | A derivation of φ using the permitted proof rules and assumptions Γ. |
+| `Γ ⊨ φ` | Every valuation satisfying Γ also satisfies φ. |
+
+### 4.4 Running small truth tables in Lean
+
+We can already check Boolean identities without defining a formula type. Lean's Boolean
+operations are `&&` (and), `||` (or), and `!` (not). These examples show the operations directly:
+
+```lean
+#eval true && false
+#eval true || false
+#eval !true
+```
+
+They display `false`, `true`, and `false`, respectively. For implication we use `!a || b`:
+
+```lean
+#eval (!true) || false
+#eval (!false) || false
+```
+
+The first displays `false`; the second displays `true`, matching the implication table.
+
+Here is a whole identity checked on every pair of Boolean inputs:
+
+```lean
+example : ∀ a b : Bool, (!(a && b)) = ((!a) || (!b)) := by
+  decide
+```
+
+The statement says that the two Boolean expressions have equal values for every `a` and `b`.
+`∀ a b : Bool, ...` is a proposition. Because each input has only two possible values,
+its decision procedure can check all four combinations. `decide` turns the successful
+computation into a proof checked by Lean.
+
+The same method checks excluded middle **for truth values**:
+
+```lean
+example : ∀ a : Bool, (a || !a) = true := by
+  decide
+```
+
+Here `a` is a **value of type `Bool`**. It can only be `true` or `false`, so Lean can try
+every possible input:
+
+| `a` | `!a` | Result: `a` or `!a` |
+|---|---|---|
+| `true` | `false` | `true` |
+| `false` | `true` | `true` |
+
+Both rows give `true`, so the check is finished.
+
+Now consider `p : Prop`. Here `p` is a **proposition**, for example “there are infinitely many
+prime numbers.” It isn't a Boolean value that Lean can simply evaluate. To construct `p ∨ ¬p`
+using the constructors of `Or`, we would need to supply one of these:
+
+- `Or.inl hp`, where `hp : p` is a proof of the proposition;
+- `Or.inr hnp`, where `hnp : ¬p` is a proof of its negation.
+
+Trying `true` and `false` in a table supplies neither of those proofs for an arbitrary
+proposition. `Classical.em p` still provides a proof of `p ∨ ¬p` as a classical principle,
+but it doesn't give an algorithm that determines whether `p` is true or false.
+
+Some propositions do have computational decision procedures, such as equalities between
+natural numbers. The point is that checking the two possible Boolean values doesn't provide
+a method for solving every mathematical question.
+
+More generally, a finite propositional formula with $n$ distinct variables has $2^n$ truth-table
+rows: each variable has two possible values. For example, three variables give $2^3 = 8$ rows.
+Exhausting those rows decides whether that formula is a tautology. With assumptions,
+we include the variables occurring in those assumptions too. This is why propositional
+validity is decidable, although checking many variables this way can be expensive.
+
+### 4.5 Use a row to refute a universal Boolean claim
+
+So far, `decide` checked whole finite tables for us. To write a proof from a counterexample
+ourselves, we need three steps: supply concrete inputs, compute the corresponding expression,
+and use an impossible equality to finish a goal of `False`.
+
+Practice with a different formula: **b and not b**, written `b && !b`. Choose the input
+`true`. Its evaluation is `true && false`, hence `false`.
+
+**First, record that a false row exists.** An existential goal asks for an input together
+with evidence about that input:
+
+```lean
+example : ∃ b : Bool, (b && !b) = false := by
+  exact ⟨true, rfl⟩
+```
+
+The pair supplies `true` as the witness and `rfl` as the proof that its evaluation is false.
+`rfl` works because the expression is concrete and computes to the right-hand side. It
+isn't checking every row or inventing a witness; we chose the witness ourselves.
+
+**Next, suppose someone claims the formula evaluates to true for every input.** That
+hypothesis would have this type:
+
+```text
+h : ∀ b : Bool, (b && !b) = true
+```
+
+To **use** a universally quantified hypothesis, supply a value as an argument. Writing
+`h true` gives a proof of the claim at that particular input:
+
+```text
+h true : (true && !true) = true
+```
+
+The expression `true && !true` computes to `false`. So this is a proof of `false = true`,
+which is impossible. We can name it with its computed type:
+
+```text
+have hrow : false = true := h true
+```
+
+Lean accepts this type annotation because it can compute the Boolean expression. It isn't
+claiming the equality is correct unconditionally: the supposed proof came from our hypothetical
+universal claim h. This is precisely how we discover that h cannot exist.
+
+Here is the complete proof refuting that universal claim:
+
+```lean
+example : ¬(∀ b : Bool, (b && !b) = true) := by
+  intro h
+  have hrow : false = true := h true
+  contradiction
+```
+
+The initial negation means `(∀ b : Bool, (b && !b) = true) → False`. Therefore `intro h`
+introduces the entire universal claim and leaves goal `False`. Applying h to our chosen
+input produces the impossible equality `hrow`. The tactic `contradiction` recognizes that
+`false` and `true` are distinct Boolean constructors and finishes the goal.
+
+Keep the types separate: **`false : Bool` is a value**, whereas **`False : Prop` represents
+an impossibility**. A Boolean expression computing to false doesn't itself supply a proof
+of `False`. Here the contradiction is the extra assumption asserting that the same expression
+equals true.
+
+**With two universally quantified inputs, supply two arguments.** In the pattern below,
+`P a b` stands for the proposition being asserted about those inputs:
+
+```text
+h : ∀ a b : Bool, P a b
+h true       : ∀ b : Bool, P true b
+h true false : P true false
+```
+
+The first application chooses a while leaving b arbitrary. The second chooses b too.
+This is how to select a row from a universal hypothesis. `intro` instead introduces inputs
+when proving a universal goal; it doesn't select values in an existing universal hypothesis.
+
+## 5. Connecting proofs and truth tables
+
+### 5.1 Soundness: a derivation preserves truth
+
+**Soundness** says:
+
+```text
+If Γ ⊢ φ, then Γ ⊨ φ.
+```
+
+A derivation built using the rules cannot take true assumptions to a false conclusion under
+our Boolean interpretation. This applies to the constructive rules we have seen and to the
+classical rules we will include in our propositional system.
+
+Consider just implication elimination:
+
+```text
+Γ ⊢ p → q       Γ ⊢ p
+─────────────────────
+       Γ ⊢ q
+```
+
+Fix a valuation satisfying Γ. Suppose the two premise derivations already guarantee that
+`p → q` and `p` evaluate to true. The implication table then forces `q` to be true. So this
+rule preserves truth.
+
+A whole proof is a tree of such steps. Induction on that tree lets us assume the premise
+proofs preserve truth, then check the final rule. The role of the induction hypotheses is
+like the child hypotheses from lesson 03, now attached to smaller derivations.
+
+### 5.2 Completeness: going from truth tables back to proofs
+
+Soundness starts with a derivation and guarantees that the conclusion is true whenever the
+assumptions are true. **Completeness asks about the reverse journey**: if the truth tables
+show that a conclusion follows from the assumptions, can our proof rules establish it?
+
+For **classical propositional natural deduction**, the answer is yes:
+
+```text
+If Γ ⊨ φ, then Γ ⊢ φ.
+```
+
+This is a claim about the existence of a derivation. In Course 1, our formal completeness
+result will cover the case with no assumptions: every propositional tautology has a derivation
+in our classical system.
+
+To understand why we specify the system, consider two examples.
+
+**First example: a constructive proof agrees with its truth table.**
+
+```lean
+example (p q : Prop) : p ∧ q → p := by
+  intro hpq
+  exact hpq.1
+```
+
+The proof assumes a conjunction and takes its first component. Its truth table is:
+
+| p | q | p ∧ q | (p ∧ q) → p |
+|---|---|---|---|
+| false | false | false | true |
+| false | true | false | true |
+| true | false | false | true |
+| true | true | true | true |
+
+We have both a derivation using constructive rules and a last column that is always true.
+Soundness guarantees this agreement for every derivation using those rules.
+
+**Second example: the table alone can validate more than the constructive rules prove.**
+
+| p | ¬p | p ∨ ¬p |
+|---|---|---|
+| false | true | true |
+| true | false | true |
+
+The table declares `p ∨ ¬p` valid. But the constructive introduction and elimination rules
+alone cannot derive it for an arbitrary propositional variable `p`. To construct this “or,”
+we would need evidence of one of its alternatives; the table doesn't supply that evidence.
+
+This gives a precise limitation: **the constructive system is sound for Boolean truth tables,
+but it is not complete for them**. Its rules respect the tables, yet they don't prove every
+formula that the tables declare valid.
+
+A classical system adds a principle permitting excluded middle, or an equivalent rule. The
+classical propositional completeness theorem then guarantees that every Boolean tautology
+has a derivation using that system's rules. Excluded middle is one illustration of the gap
+closed by this theorem; proving the general theorem takes further work.
+
+| System | Does a derivation guarantee Boolean validity? | Does Boolean validity guarantee a derivation? |
+|---|---|---|
+| Constructive natural deduction | Yes: soundness. | Not always: excluded middle is a counterexample. |
+| Classical natural deduction | Yes: soundness. | Yes: completeness. |
+
+These statements concern the propositional formulas, Boolean interpretation, and proof rules
+we have specified. They don't assert that every mathematical truth is provable in every formal
+system. A constructive system can also be studied with other interpretations; Boolean truth
+tables are the interpretation we are using here.
+
+### 5.3 From a limited search to a complete decision procedure
+
+Completeness says that a suitable derivation **exists**. To use a computer to find one, we
+also need a **search program**: an algorithm that chooses which rules to try and in which order.
+The algorithm may explore only part of what the proof system permits. In Course 1, we will
+start with such a limited search to understand its workings, then develop a complete decision
+procedure for propositional logic. The limited version is a first step, not the final objective.
+
+Let's make this concrete with a small search strategy, similar to our initial program in
+Course 1. At each goal, it tries the following:
+
+1. If the exact goal already appears among the assumptions, return that assumption's proof.
+2. If the goal is an implication, introduce its input and search for a proof of its output.
+3. If the goal is a conjunction, search for proofs of both components.
+4. If the goal is a disjunction, try to prove one alternative.
+5. If none of those steps succeeds, report that no proof was found by this search.
+
+These steps use assumptions and introduction rules. They don't include all the elimination
+rules, such as extracting a component of an assumed conjunction.
+
+**A goal the strategy can solve: `p → p`.**
+
+```text
+Goal: p → p          Assumptions: none
+Introduce p.
+Goal: p              Assumptions: p
+Use the assumption p. Search succeeds.
+```
+
+The completed derivation corresponds to this Lean proof:
+
+```lean
+example (p : Prop) : p → p := by
+  intro hp
+  exact hp
+```
+
+**A goal the strategy misses: `(p ∧ q) → p`.** We just proved this formula in §5.2, but
+watch what happens when the restricted program tries it:
+
+```text
+Goal: (p ∧ q) → p    Assumptions: none
+Introduce p ∧ q.
+Goal: p              Assumptions: p ∧ q
+```
+
+At this point, the assumption is `p ∧ q`, not `p`. The program's first step only uses an
+assumption whose formula exactly matches the goal. The goal `p` has no connective to introduce,
+so its other steps don't apply. It stops without finding a proof.
+
+A person can finish immediately with conjunction elimination:
+
+```lean
+example (p q : Prop) : (p ∧ q) → p := by
+  intro hpq
+  exact hpq.1
+```
+
+The proof system permits that step; our small program doesn't search for it. This is an
+example of **incomplete search**: a derivation exists, but this algorithm misses it.
+Giving the program more time won't supply a rule it never tries.
+
+**A search limit can also stop an otherwise useful strategy.** Our initial Course 1 search takes
+a natural number called *fuel*. Each recursive search call receives one less fuel; when
+fuel reaches zero, the search stops. This makes the program terminate even if it hasn't
+found a proof.
+
+For example, consider `p → (q → p)`. Our strategy can solve it by introducing `p`, introducing
+`q`, then using the assumption `p`. If the fuel runs out before those steps are completed,
+the search fails on that run. Increasing fuel can help with this kind of failure, but it
+can't fix the missing conjunction-elimination step in the previous example.
+
+**What do the initial program's results mean?** Its result has two possible forms:
+
+| Result | Meaning |
+|---|---|
+| `some d` | A derivation was found; `d` is the proof tree it returns. |
+| `none` | This search returned no derivation. |
+
+These are the constructors of Lean's `Option` type: it holds either a result or no result.
+They are like the optional container from lesson 03. Here the stored result is a derivation.
+
+When a derivation `d` is returned, we can check its rules and use soundness to establish that
+its conclusion follows from the assumptions. This makes the derivation a **certificate**:
+evidence that can be checked after the search has finished.
+
+A result of `none` supplies no such evidence and no counterexample. It can arise because the
+formula is invalid, because the strategy misses a necessary rule, or because fuel ran out.
+For instance, this restricted search fails on both of these inputs:
+
+| Input formula | What the search reports | What is actually true of the formula |
+|---|---|---|
+| `(p ∧ q) → p` | No derivation found. | Valid; we wrote a derivation above. |
+| `p → q` | No derivation found. | Invalid; the row p = true, q = false is a counterexample. |
+
+So failure of this search alone doesn't tell us which situation we are in. To interpret
+`none` as evidence of invalidity, we would need a guarantee that the search finds a derivation
+whenever one exists. A run that has returned `none` has already terminated.
+
+To obtain a **decision procedure**, we would also need to guarantee that the search terminates
+on every input, including formulas with no derivation. For example, a program that enumerates
+all possible derivations will eventually find one if it exists, but can search forever if
+none exists. A decision procedure must give an answer in both cases.
+
+**Truth-table checking is a different algorithm.** For a finite propositional formula, it
+can examine every valuation. A false row is a concrete counterexample to validity; if all
+rows are true, the formula is a tautology. This algorithm terminates because the number of
+rows is finite, although that number grows exponentially with the number of variables.
+Checking a table doesn't itself output a derivation tree. The completeness theorem guarantees
+that a derivation exists for a tautology; constructing such a tree is a further task.
+
+We can now separate the guarantees we will study:
+
+- **Soundness of the rules:** a derivation guarantees semantic entailment.
+- **Completeness of the classical rules:** semantic entailment guarantees a derivation exists.
+- **Success of our search program:** the particular strategy actually returns a derivation.
+
+In Course 1, we will study two different things:
+
+1. **The proof rules** define which derivations are permitted. For our classical propositional
+   system, we will prove both that every formula derivable without assumptions is a tautology
+   (**soundness**) and that every propositional tautology has such a derivation (**completeness**).
+2. **The search program** tries to construct a derivation using some of those rules. Every
+   derivation it returns will justify its conclusion, but the initial program will miss
+   some existing derivations.
+
+For example, the rules let us prove `(p ∧ q) → p`: assume the conjunction, then take its
+first component. Our initial search instead reaches this state and gets stuck:
+
+```text
+Assumption: p ∧ q
+Goal: p
+```
+
+It knows how to introduce assumptions, but doesn't try extracting components from an assumed
+conjunction. **The proof exists; the program doesn't know how to find it.**
+
+This is what it means for our initial search to be *sound but incomplete*: its successful
+results are justified, but it misses some formulas that have proofs. The *completeness of
+the classical proof system* is a different claim: the permitted rules are sufficient to
+derive every propositional tautology, even when our initial program can't find the derivation.
+
+**We will then go beyond this initial program.** The objective for Course 1 is a complete
+decision procedure for classical propositional logic. For a formula with no assumptions, the
+final procedure must satisfy three guarantees:
+
+1. **Soundness:** whenever it returns a derivation, that derivation establishes the input
+   formula, so the formula is a tautology.
+2. **Completeness:** whenever the input formula is a tautology, the procedure returns a
+   derivation. It must no longer miss valid formulas because a necessary rule was omitted
+   from its strategy or an arbitrary fuel limit was reached.
+3. **Termination:** it finishes on every input, including formulas that are not tautologies.
+
+For example, the final procedure must succeed on `(p ∧ q) → p`, which the initial search
+misses. On `p → q`, it must terminate and report that the formula is invalid. Only after
+establishing the guarantees above can we interpret its negative answer as invalidity rather
+than “the search gave up.”
+
+The development must explain both how the final algorithm covers every tautology and why
+its computation terminates. Simply increasing the initial program's fuel wouldn't make its
+limited strategy complete. We will keep the proof-system theorems separate from these algorithmic
+guarantees, and prove both. This objective concerns finite propositional formulas; it doesn't
+claim a decision procedure for arbitrary Lean propositions or first-order logic.
 
 ## 6. Prove it
 
-Prove the four **classical** theorems in `Skeleton.lean` (each needs `Classical.em` or
-`Classical.byContradiction` — recall `by_contra` is unavailable in our core). Check with:
+**Classical tools to keep at hand.** Here `r : Prop` stands for whichever proposition you
+want to reason about, including a compound proposition.
+
+- **`Classical.em r`** supplies a proof of `r ∨ ¬r`. Using `cases Classical.em r` opens two
+  branches: one receives a proof of `r`, the other a proof of `¬r`. Both branches must prove
+  your original goal. The pattern is:
+
+  ```text
+  cases Classical.em r with
+  | inl hr =>
+    ...   -- hr : r; prove the original goal here
+  | inr hnr =>
+    ...   -- hnr : ¬r; prove the original goal here
+  ```
+
+- **`apply Classical.byContradiction`** lets you prove the current goal by refuting its
+  negation. If the goal is `r`, the steps change the proof state as follows:
+
+  ```text
+  Initial goal: r
+
+  apply Classical.byContradiction
+  New goal: ¬r → False
+
+  intro hnr
+  New hypothesis: hnr : ¬r
+  New goal: False
+  ```
+
+  The name `hnr` is your choice; its type comes from the negation of the current goal.
+  You still need to derive the contradiction from the available hypotheses.
+
+**Related tools that don't require a classical principle:** to prove a negation `¬r`,
+`intro hr` directly introduces `hr : r` and leaves goal `False`, because `¬r` means
+`r → False`. `exfalso` changes a goal to `False` without adding any hypothesis.
+If you already have `hFalse : False`, `exact False.elim hFalse` finishes any propositional
+goal. These tools use a contradiction; they don't construct one for you.
+
+If an intermediate proof needs several steps, use `have h : ... := by` as in §3.4.
+Its indented block proves the announced proposition; dedenting returns to the original goal
+with h available. This proof-structuring tool will be useful alongside the classical principles.
+
+Open `Skeleton.lean`. Prove the first four statements using the classical tools introduced
+above, then complete the truth-table exercise at the end of this required set.
+The examples in the teaching sections have different conclusions; the complete corrections
+for these exercises appear after the hints.
 
 ```bash
 make lab C=00-foundations/04-logic
 ```
 
-1. `dne : ¬¬p → p`
-2. `em : p ∨ ¬p`  — try to **derive** it, not just cite `Classical.em`
-3. `peirce : ((p → q) → p) → p`
-4. `not_and : ¬(p ∧ q) → ¬p ∨ ¬q`
+1. **Double-negation elimination.** From a proof of `¬¬p`, obtain a proof of `p`.
 
-Try cold; §7 has graduated hints. When done, run `#print axioms` (it's in `Solution.lean`) and watch
-`Classical.choice` appear — the footprint of having reasoned classically.
+   ```lean
+   theorem double_negation_elimination (p : Prop) : ¬¬p → p := by
+     sorry
+   ```
+
+2. **Excluded middle.** Derive it using `Classical.byContradiction`, rather than finishing by
+   citing `Classical.em`. The purpose is to practice constructing the proof from that principle.
+
+   ```lean
+   theorem excluded_middle (p : Prop) : p ∨ ¬p := by
+     sorry
+   ```
+
+3. **Peirce's law.** Read the parentheses carefully: the input is a function that can produce
+   `p` if supplied with a function of type `p → q`.
+
+   ```lean
+   theorem peirce (p q : Prop) : ((p → q) → p) → p := by
+     sorry
+   ```
+
+4. **One direction of De Morgan's law.**
+
+   ```lean
+   theorem not_and (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
+     sorry
+   ```
+
+5. **Build a truth table, then formalize its conclusion.** Consider the formula:
+
+   $$(p \lor q) \to (p \land q).$$
+
+   First work on paper. Complete every blank, using the implication rule: an implication
+   is false exactly when its input is true and its output is false.
+
+   | p | q | p ∨ q | p ∧ q | (p ∨ q) → (p ∧ q) |
+   |---|---|---|---|---|
+   | false | false | … | … | … |
+   | false | true | … | … | … |
+   | true | false | … | … | … |
+   | true | true | … | … | … |
+
+   Is the formula a tautology? If a row makes it false, identify the two input values.
+   Explain why one such row is enough to refute validity.
+
+   Then formalize that conclusion in `Skeleton.lean`. The Boolean expression
+   `(!(a || b)) || (a && b)` evaluates this formula: `a` and `b` are the truth values
+   assigned to p and q. The first statement asks you to supply a falsifying row; the second
+   asks you to show that the formula isn't true under every assignment:
+
+   ```lean
+   theorem truth_table_counterexample :
+       ∃ a b : Bool, ((!(a || b)) || (a && b)) = false := by
+     sorry
+
+   theorem truth_table_not_valid :
+       ¬(∀ a b : Bool, ((!(a || b)) || (a && b)) = true) := by
+     sorry
+   ```
+
+   Use the row you found for the first proof, with `rfl` to check its concrete computation.
+   For the second, reuse that row. Don't replace the table exercise with a single `decide`
+   on the whole quantified statement: the aim is to connect a row with the logical claim.
+
+The lab checks the required file first, then reports optional exercises separately. Required
+exercises determine whether the command succeeds. Pending optional exercises are yellow in a
+terminal with color support; finishing the required work is enough for a green required status.
 
 ## 7. Hints for the skeleton
 
-**1 `dne`.** *Nudge:* this is *exactly* what `Classical.byContradiction` says. *More:* `intro h`, then
-`exact Classical.byContradiction h`.
+Read only as far as you need.
 
-**2 `em`.** *Nudge:* prove it *by contradiction* — assume `¬(p ∨ ¬p)` and derive `False`. *More:*
-`apply Classical.byContradiction; intro h`; now `h : ¬(p ∨ ¬p)`. Build the right side from a hypothetical
-`p` (`fun hp => h (Or.inl hp) : ¬p`), inject it with `Or.inr`, and feed the whole thing back to `h`.
+### 1. `double_negation_elimination` — double-negation elimination
 
-**3 `peirce`.** *Nudge:* `intro h`, then go by contradiction with `hnp : ¬p`. To use `h`, you need a proof
-of `p → q` — but `¬p` makes one for free (`fun hp => absurd hp hnp`). *More:*
-`exact hnp (h (fun hp => absurd hp hnp))`.
+**First hint.** Introduce the proof of `¬¬p`. Expand that type mentally as `(¬p) → False`.
 
-**4 `not_and`.** *Nudge:* `intro h`, then split on `Classical.em p`. *More:* if `hp : p`, the answer is
-`Or.inr (fun hq => h ⟨hp, hq⟩)`; if `hnp : ¬p`, it's `Or.inl hnp`.
+**Next hint.** Proof by contradiction asks you for a function from `¬p` to `False`. You already
+have such a function among your hypotheses.
 
-## 8. Exercises (optional, for fluency)
+### 2. `excluded_middle`
 
-1. **Feel the asymmetry.** Prove the **converse** of #4 — `not_and_converse : (¬p ∨ ¬q) → ¬(p ∧ q)` — and
-   then run `#print axioms` on it. It needs **no** classical logic. Why is one direction of De Morgan
-   constructive and the other not? (Hint at the answer: building a proof vs. *deciding* which side holds.)
-2. **A classical staple.** Prove `not_imp : ¬(p → q) → p ∧ ¬q`. *Hint:* `constructor`; for the `p` half,
-   go by contradiction; for the `¬q` half, assume `q` and note `fun _ => q` is a proof of `p → q`.
+**First hint.** Reason by contradiction with the whole goal `p ∨ ¬p`.
 
-## 9. Corrections to the optional exercises
+**Next hint.** Your new assumption denies both possible ways to build this disjunction.
+First, show that a proof of `p` would contradict it; this constructs `¬p`.
 
-### Exercise 1 — `not_and_converse` (constructive!)
+**Further hint.** Once you have `¬p`, use it to build the right alternative of the very
+disjunction your assumption denies.
+
+### 3. `peirce`
+
+**First hint.** Introduce the input function, then reason by contradiction to obtain `hnp : ¬p`.
+
+**Next hint.** The input function wants `p → q`. Under `hnp`, assuming `p` would produce
+`False`, from which you can prove `q` with `False.elim`.
+
+**Further hint.** Use `have` to build that implication in its own indented proof. Feed it
+to the input function, then compare the result with `hnp`.
+
+### 4. `not_and`
+
+**First hint.** After introducing the negated conjunction, split on `Classical.em p`.
+
+**Next hint.** If you have `¬p`, one side of your goal is immediate. If you have `p`, work
+toward `¬q` by assuming `q` and building the forbidden conjunction.
+
+### 5. Truth table
+
+**First hint.** Use the method from §4.5, with two inputs instead of one. For the
+existential statement, package the inputs you found and their computation proof as
+`⟨firstInput, secondInput, proofOfTheRow⟩`. The names here are placeholders for your choices.
+
+**Next hint.** In the negated universal statement, `intro h` leaves goal `False`. Apply h
+to your chosen two inputs using `h firstInput secondInput`. Its claim of a true evaluation
+conflicts with the false evaluation in your table. Name the resulting equality, then use
+`contradiction`, as in the different example of §4.5.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises before reading this section. The same proofs are in `Solution.lean`.
+`make test` checks that answer key; `make lab` checks your own file.
+
+### 1. Double-negation elimination
+
+```lean
+theorem double_negation_elimination (p : Prop) : ¬¬p → p := by
+  intro hnnp
+  apply Classical.byContradiction
+  intro hnp
+  exact hnnp hnp
+```
+
+After `intro hnnp`, we have `hnnp : (¬p) → False` and goal `p`. The classical step replaces
+that goal with `¬p → False`. Introducing its input gives `hnp : ¬p`; `hnnp hnp : False`
+finishes the proof. The contradiction step supplies the bridge back to a proof of `p`.
+
+A shorter version passes the entire function directly:
+
+```lean
+example (p : Prop) : ¬¬p → p := by
+  intro hnnp
+  exact Classical.byContradiction hnnp
+```
+
+### 2. Deriving excluded middle
+
+```lean
+theorem excluded_middle (p : Prop) : p ∨ ¬p := by
+  apply Classical.byContradiction
+  intro hneither
+  have hnp : ¬p := by
+    intro hp
+    have hor : p ∨ ¬p := Or.inl hp
+    exact hneither hor
+  have hor : p ∨ ¬p := Or.inr hnp
+  exact hneither hor
+```
+
+Follow the surrounding goal and the local goal separately.
+
+After `apply Classical.byContradiction` and `intro hneither`, the surrounding state is:
+
+```text
+hneither : (p ∨ ¬p) → False
+⊢ False
+```
+
+To use `hneither`, we must supply a proof of `p ∨ ¬p`. We will construct its right alternative,
+so we first need a proof of `¬p`. This is why we choose the intermediate claim in
+`have hnp : ¬p := by`: the local block's goal becomes `¬p`, while the surrounding `False`
+goal waits.
+
+Inside that block, `intro hp` gives `hp : p` and leaves local goal `False`. We can now build
+the left alternative with `Or.inl hp`. The line `have hor : p ∨ ¬p := Or.inl hp` names this
+proof of the disjunction; `exact hneither hor` then supplies the required contradiction.
+That finishes the local proof of `¬p`.
+
+After dedenting, we return to:
+
+```text
+hneither : (p ∨ ¬p) → False
+hnp : ¬p
+⊢ False
+```
+
+The local `hp` and the first `hor` are no longer available. But `hnp` now lets us build the
+right alternative: `Or.inr hnp : p ∨ ¬p`. We name it `hor` again in this surrounding scope,
+then `hneither hor` provides the final contradiction. The two uses of `hor` name different
+proofs in different scopes; neither is an extra assumption.
+
+Only the outer step used classical proof by contradiction. The local proof of `¬p` built
+a function of type `p → False`, using the proof-structuring technique from §3.4.
+
+### 3. Peirce's law
+
+```lean
+theorem peirce (p q : Prop) : ((p → q) → p) → p := by
+  intro h
+  apply Classical.byContradiction
+  intro hnp
+  have hpq : p → q := by
+    intro hp
+    exact False.elim (hnp hp)
+  have hp : p := h hpq
+  exact hnp hp
+```
+
+After the first three steps:
+
+```text
+h : (p → q) → p
+hnp : ¬p
+⊢ False
+```
+
+To use `h`, we need to supply an entire implication `p → q`. The nested proof introduces
+`hp : p`, derives `hnp hp : False`, and uses `False.elim` to produce the requested `q`.
+It doesn't claim to have a proof of `p` outside that nested assumption.
+
+Back in the outer proof, `h hpq : p` gives such a proof, named `hp`. Then `hnp hp` contradicts
+it. Writing the intermediate functions and proofs with `have` makes their types visible.
+
+### 4. De Morgan's classical direction
+
+```lean
+theorem not_and (p q : Prop) : ¬(p ∧ q) → ¬p ∨ ¬q := by
+  intro hnotBoth
+  cases Classical.em p with
+  | inl hp =>
+    right
+    intro hq
+    exact hnotBoth ⟨hp, hq⟩
+  | inr hnp =>
+    left
+    exact hnp
+```
+
+`hnotBoth` rules out having both proofs. It doesn't itself identify a failed side. Excluded
+middle supplies two branches for `p`. If `hp : p`, the goal's right alternative can be built:
+assuming `hq : q` would give the forbidden conjunction. If `hnp : ¬p`, the left alternative
+is already available. The use of excluded middle is the classical step.
+
+The four classical proofs above report `Classical.choice`, `propext`, and `Quot.sound` when
+inspected with `#print axioms`. None contains an unfinished proof.
+
+### 5. A truth table and a counterexample to validity
+
+The completed table is:
+
+| p | q | p ∨ q | p ∧ q | (p ∨ q) → (p ∧ q) |
+|---|---|---|---|---|
+| false | false | false | false | true |
+| false | true | true | false | false |
+| true | false | true | false | false |
+| true | true | true | true | true |
+
+In the first row, the implication's input is false, so the implication is true even though
+its output is false. In the middle two rows, its input is true and its output false, so the
+implication is false. The last column isn't always true: the formula isn't a tautology.
+Either middle row is a counterexample; the proof below chooses p true and q false.
+
+```lean
+theorem truth_table_counterexample :
+    ∃ a b : Bool, ((!(a || b)) || (a && b)) = false := by
+  exact ⟨true, false, rfl⟩
+
+theorem truth_table_not_valid :
+    ¬(∀ a b : Bool, ((!(a || b)) || (a && b)) = true) := by
+  intro hAll
+  obtain ⟨a, b, hRow⟩ := truth_table_counterexample
+  have hTrue : ((!(a || b)) || (a && b)) = true := hAll a b
+  rw [hRow] at hTrue
+  contradiction
+```
+
+The existential proof supplies `true` as a, `false` as b, then `rfl` as evidence that this
+row computes to false. The notation `⟨true, false, rfl⟩` packages two witnesses and the
+proof required for those witnesses.
+
+The second proof **builds a negation**. Its initial goal is the negation of a universally
+quantified claim. `intro hAll` assumes that claim and leaves goal `False`. Unpacking the
+counterexample with `obtain` gives:
+
+```text
+a b : Bool
+hRow : ((!(a || b)) || (a && b)) = false
+hAll : ∀ a b : Bool, ((!(a || b)) || (a && b)) = true
+⊢ False
+```
+
+`hAll a b` says the same row evaluates to true. Rewriting with `hRow` makes `hTrue` become
+`false = true`, and `contradiction` eliminates this impossible equality. No classical
+principle is needed: a supplied false row directly refutes the universal claim.
+
+The table checks four particular assignments; the existential statement names one failed
+assignment; the negated universal statement expresses why that failure rules out a tautology.
+These are three views of the same reasoning, now connected explicitly.
+
+## 9. Exercises (optional, for fluency)
+
+Use `optional/Skeleton.lean`. The same lab command reports their status separately. These
+statements are not proved in the teaching sections above.
+
+1. **The other direction of De Morgan's law.** Prove this without classical tools:
+
+   ```lean
+   theorem not_and_converse (p q : Prop) : (¬p ∨ ¬q) → ¬(p ∧ q) := by
+     sorry
+   ```
+
+   *Hint:* after introducing the disjunction and conjunction, split on the disjunction.
+   Each branch provides a way to refute one component of the conjunction.
+
+2. **Refuting an implication.**
+
+   ```lean
+   theorem not_imp (p q : Prop) : ¬(p → q) → p ∧ ¬q := by
+     sorry
+   ```
+
+   *First hint:* construct the two components separately. *Next hint:* for `p`, reason by
+   contradiction and build an implication from the resulting impossible input. For `¬q`,
+   assume `q` and build a function that returns its proof regardless of its input.
+
+After trying both optional exercises, inspect `#print axioms` in their answer key and compare
+the proof dependencies. You can preview a reset of this lesson's required and optional work with
+`make reset C=00-foundations/04-logic DRY_RUN=1`.
+
+## 10. Worked corrections to the optional exercises
+
+The same proofs are in `optional/Solution.lean`, included in `make test` and the axiom audit.
+
+### 1. Refuting a conjunction constructively
 
 ```lean
 theorem not_and_converse (p q : Prop) : (¬p ∨ ¬q) → ¬(p ∧ q) := by
-  intro h hpq
-  cases h with
-  | inl hnp => exact hnp hpq.1
-  | inr hnq => exact hnq hpq.2
+  intro hnot
+  intro hpq
+  cases hnot with
+  | inl hnp =>
+    exact hnp hpq.1
+  | inr hnq =>
+    exact hnq hpq.2
 ```
 
-`intro h hpq` gives `h : ¬p ∨ ¬q` and `hpq : p ∧ q`, with goal `False`. `cases h`: if the left side holds
-(`hnp : ¬p`), contradict it with `hpq.1 : p`; if the right (`hnq : ¬q`), with `hpq.2`. **`#print axioms`
-reports no axioms** — purely constructive. The contrast with `not_and` is the heart of §3: *given* a
-broken conjunction, deducing "one of them fails" requires *deciding which* — a classical act — whereas
-*given* a known failure, refuting the conjunction is a direct construction.
+After the introductions:
 
-### Exercise 2 — `not_imp` (classical)
+```text
+hnot : ¬p ∨ ¬q
+hpq : p ∧ q
+⊢ False
+```
+
+We **use** an existing disjunction; there is no need to introduce excluded middle. In the
+left branch, `hnp : p → False` accepts `hpq.1 : p`. In the right, `hnq : q → False`
+accepts `hpq.2 : q`. This proof has no axiom dependencies.
+
+Compare the inputs of the two De Morgan directions. A proof of `¬p ∨ ¬q` already tells us
+which negation we can use, through its `Or` constructor. A proof of `¬(p ∧ q)` only gives a
+function refuting a conjunction. Extracting a disjunction of negations from that input for
+arbitrary `p` and `q` requires a classical principle; refuting a conjunction from a known
+negation doesn't.
+
+### 2. Refuting an implication
 
 ```lean
 theorem not_imp (p q : Prop) : ¬(p → q) → p ∧ ¬q := by
-  intro h
+  intro hnotImp
   constructor
   · apply Classical.byContradiction
     intro hnp
-    exact h (fun hp => absurd hp hnp)
+    have hpq : p → q := by
+      intro hp
+      exact False.elim (hnp hp)
+    exact hnotImp hpq
   · intro hq
-    exact h (fun _ => hq)
+    have hpq : p → q := by
+      intro hp
+      exact hq
+    exact hnotImp hpq
 ```
 
-`constructor` splits the goal `p ∧ ¬q`. **For `p`:** by contradiction — if `hnp : ¬p`, then
-`fun hp => absurd hp hnp : p → q` (vacuously), and `h` of that is `False`. **For `¬q`:** assume `hq : q`;
-then `fun _ => hq : p → q` (ignore the input, return `q`), and again `h` of it is `False`. Both halves lean
-on the classical idea that "`p → q` is false" forces `p` true and `q` false — which only makes sense once
-you can rule out the in-between, i.e. classically.
+`constructor` selects `And.intro`, leaving goals `p` and `¬q`. In both branches,
+`hnotImp : (p → q) → False` can refute a function of type `p → q`.
 
-## 10. Going further
+For the first goal, `p`, the classical step introduces `hnp : ¬p` and leaves goal `False`.
+Under this assumption, we can construct `p → q`: any hypothetical input `hp : p` would
+contradict `hnp`, and `False.elim` then supplies `q`. This function contradicts `hnotImp`.
 
-- **Logic and Proof** — `../../references/logic_and_proof`: the natural-deduction chapters (the rules of
-  §2 on paper, with many worked proof trees) and the semantics/soundness/completeness chapters. This is
-  *the* companion text for Course 1.
-- **Theorem Proving in Lean 4** — `../../references/theorem_proving_in_lean4`, the *Axioms and Computation*
-  chapter, for exactly what `Classical.choice`, `propext`, and `Quot.sound` are and why they're safe.
-- **Next: Course 1.** We leave the foundations and build the real thing — formalize `Form`, the semantics
-  `⟦·⟧`, the natural-deduction relation `⊢`, prove **soundness** and **completeness** for propositional
-  logic, and write a **prover** that searches for derivations (and works for first-order logic too).
+For the second goal, `¬q`, introducing `hq : q` directly leaves goal `False`. We can now
+construct `p → q` by returning the existing `hq` for any input. The local name `hp` has type
+`p` because it is the function's input; we don't need to use it. Again the resulting function
+contradicts `hnotImp`.
+
+Only the first branch uses a classical step. Deriving `¬q` from `¬(p → q)` is constructive.
+The axiom report for the whole proof includes `Classical.choice`, `propext`, and `Quot.sound`
+because the proof of the conjunction includes its classical first component.
+
+## 11. Conclusion
+
+You can now distinguish three objects that are easy to conflate:
+
+- A **formula** describes a logical claim, such as `(p ∧ q) → p`.
+- A **derivation** records how permitted rules establish it from assumptions. We write `Γ ⊢ φ`
+  when such a derivation exists.
+- An **evaluation** computes its truth value under a valuation. We write `Γ ⊨ φ` when every
+  valuation satisfying the assumptions also satisfies the conclusion.
+
+For `(p ∧ q) → p`, a derivation takes the first component of an assumed conjunction. A truth
+table instead checks four assignments to `p` and `q`. Both establish something precise,
+using different methods. Soundness connects a derivation to truth in every relevant row;
+classical propositional completeness connects truth in every row to the existence of a derivation.
+
+The constructive/classical distinction concerns the rules available for proofs. Building
+`¬p` from an assumed `p` and a contradiction uses the definition of negation. Recovering
+an arbitrary positive claim by refuting its negation uses a classical principle. The goal
+and the types of your hypotheses tell you which situation you are in.
+
+In the next course, formulas and derivations become explicit inductive types. We will write
+functions on them and prove properties by induction. A first search program will help us see
+how rules become executable proof-building steps and why a limited strategy can miss proofs.
+We will then develop a complete propositional decision procedure: it must return a derivation
+for every tautology, give only justified answers, and terminate on every input. Proving the
+correctness and completeness of the rules and establishing these guarantees for the program
+are distinct parts of that objective.
+
+## 12. Going further
+
+- **Logic and Proof** — the local copy at `../../../references/logic_and_proof`, if available:
+  the natural-deduction chapters develop proof trees, and the propositional-semantics chapters
+  explain valuations, soundness, and completeness.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  the *Axioms and Computation* chapter discusses Lean's foundational axioms and computation.
+- **Next: Course 1.** Define propositional formulas, their Boolean interpretation, and natural
+  deduction. Prove soundness and completeness of the classical propositional proof system,
+  start with a bounded proof search, then develop a complete propositional decision procedure
+  with proofs of soundness, completeness, and termination.

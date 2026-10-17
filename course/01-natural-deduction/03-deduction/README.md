@@ -1,28 +1,27 @@
-# 03-deduction — natural deduction as a data type
+# 1.3 — Natural deduction: constructing derivation trees
 
-**Objective.** Define the provability relation `Γ ⊢ φ` as an **inductive type whose constructors are the
-inference rules** of `04-logic §2` — so a *proof* becomes a *value*, a tree you build with the rules.
-The `raa` rule makes the system **classical**. You'll hand-build four derivations, culminating in
-**Peirce's law**. This is **slice 1.3**; `Deriv` graduates into `Principia.NatDed.Basic`.
-
-**Prerequisites.** Slice 1.1 (`Form`), and `04-logic` (the inference rules on paper).
-
-**The rung.** Single rung — the `Deriv` type is *given*; you construct four derivations.
-
-## Definition of done
-
-- [ ] `make lab C=01-natural-deduction/03-deduction` goes red → green.
-- [ ] `make test` stays green; `make axioms` clean.
-
-## A note on difficulty
-
-Building derivation *terms* by hand is fiddly — you must name the formula each `ax` (assumption) proves,
-and the formula each *elimination* discards. That friction is the whole reason **slice 1.5 builds a
-prover** to do this search for us. Embrace the struggle here; you're feeling the problem the prover solves.
-
-## Run
+Read the explainer for step-by-step examples and proof states. Teaching examples have different
+statements from the exercises. Supporting definitions are supplied in `Skeleton.lean`; full
+corrections appear after the hints and in the verified answer keys.
 
 ```bash
 make lab C=01-natural-deduction/03-deduction
+make test
+make axioms
 make explainer C=01-natural-deduction/03-deduction
+make reset C=01-natural-deduction/03-deduction DRY_RUN=1
 ```
+
+Required exercises determine the lab exit status. Optional exercises have their own skeleton
+and solution under `optional/` and a separate pending status. Reset supports both sets and
+saves backups before replacing completed bodies.
+
+## Definition of done
+
+- [ ] Required exercises pass without placeholders.
+- [ ] Read the correction after trying, and explain each intermediate goal and hypothesis.
+- [ ] `make test` and `make axioms` pass.
+- [ ] Optional: complete the additional exercises.
+
+Course 1 progresses from formulas and valuations to derivations, soundness, limited search,
+executable completeness, and a complete terminating propositional solver in lesson 1.7.

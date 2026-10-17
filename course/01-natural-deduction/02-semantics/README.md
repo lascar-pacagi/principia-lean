@@ -1,26 +1,27 @@
-# 02-semantics — what a formula *means*
+# 1.2 — Semantics: valuations and truth tables
 
-**Objective.** Give formulas meaning: define `eval`, the truth table of `04-logic` as a Lean function;
-define validity `Tautology` (`⊨ φ`) and semantic entailment `Entails` (`Γ ⊨ φ`); and meet a **runnable
-tautology checker** `taut?`. You'll prove three basic semantic facts. This is **slice 1.2**; its code
-graduates into `Principia.Logic.Semantics` and is the `⊨` side of the soundness/completeness theorems to
-come.
-
-**Prerequisites.** Slice 1.1 (`Form`), and `04-logic` (truth tables, `⊨`).
-
-**The rung.** Single rung — `eval`, `Tautology`, `Entails`, and the checker `taut?` are *given*; you
-prove `eval_neg`, `taut_imp_self`, `taut_em`.
-
-## Definition of done
-
-- [ ] `make lab C=01-natural-deduction/02-semantics` goes red → green.
-- [ ] `make test` stays green; `make axioms` clean.
-
-## Run
+Read the explainer for step-by-step examples and proof states. Teaching examples have different
+statements from the exercises. Supporting definitions are supplied in `Skeleton.lean`; full
+corrections appear after the hints and in the verified answer keys.
 
 ```bash
 make lab C=01-natural-deduction/02-semantics
+make test
+make axioms
 make explainer C=01-natural-deduction/02-semantics
+make reset C=01-natural-deduction/02-semantics DRY_RUN=1
 ```
 
-Next slice: **1.3 — natural deduction** (`Γ ⊢ φ` as an inductive type of proof trees).
+Required exercises determine the lab exit status. Optional exercises have their own skeleton
+and solution under `optional/` and a separate pending status. Reset supports both sets and
+saves backups before replacing completed bodies.
+
+## Definition of done
+
+- [ ] Required exercises pass without placeholders.
+- [ ] Read the correction after trying, and explain each intermediate goal and hypothesis.
+- [ ] `make test` and `make axioms` pass.
+- [ ] Optional: complete the additional exercises.
+
+Course 1 progresses from formulas and valuations to derivations, soundness, limited search,
+executable completeness, and a complete terminating propositional solver in lesson 1.7.

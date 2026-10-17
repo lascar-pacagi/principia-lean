@@ -6,6 +6,8 @@ import Principia.Logic.Syntax
 `make test` kernel-checks this; `make axioms` audits the keystones. Graduates into
 `Principia.Logic.Semantics`. Read to understand *why*, not to copy.
 -/
+set_option warningAsError true
+
 open scoped Principia.Form
 
 namespace Principia.Form
@@ -41,7 +43,7 @@ theorem eval_neg (v : Nat → Bool) (φ : Form) : eval v (∼φ) = !eval v φ :=
 theorem taut_imp_self (φ : Form) : Tautology (φ ⇒ φ) := by
   intro v; simp only [eval]; cases eval v φ <;> rfl
 
-theorem taut_em (φ : Form) : Tautology (φ ⋎ ∼φ) := by
+theorem taut_excluded_middle (φ : Form) : Tautology (φ ⋎ ∼φ) := by
   intro v; simp only [eval, Form.neg]; cases eval v φ <;> rfl
 
 /-! ## Checks (Tier-2 computational + honesty audit) -/
@@ -53,6 +55,6 @@ theorem taut_em (φ : Form) : Tautology (φ ⋎ ∼φ) := by
 
 #print axioms eval_neg
 #print axioms taut_imp_self
-#print axioms taut_em
+#print axioms taut_excluded_middle
 
 end Principia.Form

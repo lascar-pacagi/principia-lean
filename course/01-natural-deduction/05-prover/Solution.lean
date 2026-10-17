@@ -6,6 +6,8 @@ import Principia.NatDed.Soundness
 `make test` kernel-checks this; `make axioms` audits it. Graduates into `Principia.NatDed.Prover`.
 Read to understand *why*, not to copy.
 -/
+set_option warningAsError true
+
 open scoped Principia.Form Principia
 
 namespace Principia
@@ -36,12 +38,12 @@ def prove (φ : Form) : Option ([] ⊢ φ) := prove? (φ.size + 1) [] φ
 -- The `none` branch is impossible (it contradicts `h`); the `some d` branch hands us a real derivation,
 -- and `soundness` turns it into the entailment. The type was the certificate all along.
 theorem prove_sound {Γ : List Form} {φ : Form} {fuel : Nat}
-    (h : (prove? fuel Γ φ).isSome) : Form.Entails Γ φ := by
+    (h : (prove? fuel Γ φ).isSome = true) : Form.Entails Γ φ := by
   cases hp : prove? fuel Γ φ with
   | none   => rw [hp] at h; simp at h
   | some d => exact Form.soundness d
 
-theorem prove_tautology {φ : Form} (h : (prove φ).isSome) : Form.Tautology φ := by
+theorem prove_tautology {φ : Form} (h : (prove φ).isSome = true) : Form.Tautology φ := by
   cases hp : prove φ with
   | none   => rw [hp] at h; simp at h
   | some d => exact Form.tautology_of_proof d

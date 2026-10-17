@@ -1,7 +1,7 @@
 /-!
 # Principia.Logic.Syntax — propositional formulas
 
-The language of the prover (Course 1, slice 1.1). `var : Nat → Form` keeps the type first-order-ready;
+The language of the prover (Course 1, slice 1.1). `var : Nat → Form` supplies arbitrarily many propositional atom names;
 `¬`, `⊤`, `↔` are *derived*, so the core has just five constructors to reason about.
 -/
 namespace Principia

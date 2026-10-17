@@ -1,26 +1,27 @@
-# 01-syntax — the language of formulas
+# 1.1 — Syntax: building formulas as data
 
-**Objective.** Begin the prover by defining its raw material: **propositional formulas** as an inductive
-type `Form`, with readable notation and a `size` measure. You'll prove two small structural facts by
-induction over the new type — the same method as `03-recursion`, now on the syntax we'll prove things
-about all course. This is **slice 1.1** of Course 1; its code graduates into `Principia.Logic.Syntax`.
-
-**Prerequisites.** All of Course 0 — especially `03-recursion` (inductive types, structural induction)
-and `04-logic` (what these connectives *mean*).
-
-**The rung.** Single rung — the type, notation, derived connectives, and `size` are *given*; you prove
-`size_pos` and `size_neg`.
-
-## Definition of done
-
-- [ ] `make lab C=01-natural-deduction/01-syntax` goes red → green.
-- [ ] `make test` stays green; `make axioms` clean.
-
-## Run
+Read the explainer for step-by-step examples and proof states. Teaching examples have different
+statements from the exercises. Supporting definitions are supplied in `Skeleton.lean`; full
+corrections appear after the hints and in the verified answer keys.
 
 ```bash
 make lab C=01-natural-deduction/01-syntax
+make test
+make axioms
 make explainer C=01-natural-deduction/01-syntax
+make reset C=01-natural-deduction/01-syntax DRY_RUN=1
 ```
 
-Read `explainer.qmd` first. Next slice: **1.2 — semantics** (`eval`, `⊨`, a truth-table checker).
+Required exercises determine the lab exit status. Optional exercises have their own skeleton
+and solution under `optional/` and a separate pending status. Reset supports both sets and
+saves backups before replacing completed bodies.
+
+## Definition of done
+
+- [ ] Required exercises pass without placeholders.
+- [ ] Read the correction after trying, and explain each intermediate goal and hypothesis.
+- [ ] `make test` and `make axioms` pass.
+- [ ] Optional: complete the additional exercises.
+
+Course 1 progresses from formulas and valuations to derivations, soundness, limited search,
+executable completeness, and a complete terminating propositional solver in lesson 1.7.

@@ -1,150 +1,238 @@
 ---
-title: "1.6 — Completeness: closing the loop  (⊢ ⟺ ⊨)"
+title: "1.6 — Completeness: constructing proofs from truth"
 ---
 
-> **Where you are.** Soundness (1.4) gave `⊢ → ⊨`: proofs don't lie. This slice proves the converse,
-> **completeness** `⊨ → ⊢`: proofs miss nothing. Put together, `⊢ ⟺ ⊨` — *provable* and *true* are the
-> same notion, viewed two ways. This is the final slice of Course 1 and its hardest result. The
-> construction (Kalmár's method) lives in `Principia.NatDed.Kalmar`; you assemble the theorem.
+> **Where you are.** The initial search misses valid formulas. We now construct a derivation
+> from semantic validity using Kalmár's method. The next lesson combines this executable
+> construction with a certified finite truth table to obtain the complete solver.
 
-## 1. The question
+## 1. The question: how can truth produce a derivation?
 
-The slice-1.5 prover was *incomplete*: it said "no" to `(p ⋏ q) ⇒ p` even though that's valid, because it
-never tried elimination. Is that a fundamental limit, or just a weak search? Completeness answers: **it's
-just a weak search.** *Every* tautology has *some* derivation. So validity (checkable by truth tables) and
-provability coincide, and "find a proof" is, in principle, always possible for a valid formula.
+Soundness consumes a derivation and guarantees validity. We need a construction in the other
+direction. A table row gives only truth values; it doesn't itself contain a derivation tree.
+Kalmár's method builds the tree in two stages: first under assumptions describing each row,
+then without those assumptions by joining the row cases.
 
-## 2. What completeness says, and why it's the keystone
 
 ```lean
-def completeness {φ} (h : Tautology φ) : [] ⊢ φ
-theorem provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ
+import Principia.NatDed.Completeness
+open Principia Principia.Form
+open scoped Principia.Form Principia
 ```
 
-`completeness` turns a *semantic* fact (true under every valuation) into a *syntactic* object (a
-derivation). With soundness it gives the equivalence `provable_iff_tautology`: **`⊢ ⟺ ⊨`**. Consequences:
 
-- **A certified decision procedure.** `taut?` (slice 1.2) decides validity by truth tables; completeness
-  says a valid formula is provable, soundness says a provable one is valid — so the truth-table answer is
-  exactly the provability answer, and either certifies the other.
-- **The prover's "no" gets meaning.** A complete search *must* exist (completeness constructs one); a
-  "not provable" therefore really means "not valid."
+The construction is for our **classical propositional** system. It relies on the explicit
+`raa` rule to combine positive and negative assumptions. It doesn't give a decision procedure
+for arbitrary Lean propositions or first-order formulas.
 
-## 3. Kalmár's method
+## 2. Literals describe one row
 
-We avoid the usual heavy machinery (maximal consistent sets, choice). The idea is elementary and lives
-in three pieces (all in `Principia.NatDed.Kalmar`, worth reading):
+A **literal** is an atom or its negation. Under a valuation v, `lit v i` is `var i` if its
+value is true, otherwise `∼(var i)`. `litCtx v n` lists these literals for indices below n,
+from the highest index down.
 
-**Literal contexts.** For a valuation `v`, `litCtx v n` is the list of *literals* describing `v` on atoms
-`0..n-1`: atom `i` contributes `var i` if `v i = true`, else `∼(var i)`. It's the set of assumptions that
-"pin down" `v`.
+For the row p false, q true, with p indexed by 0 and q by 1, the context is `[q, ∼p]`:
 
-**Kalmár's lemma.** For any `φ` (atoms `< n`):
 ```lean
-kalmar v n φ _ : (eval v φ = true → litCtx v n ⊢ φ) × (eval v φ = false → litCtx v n ⊢ ∼φ)
+#eval litCtx (fun i => i == 1) 2
 ```
-From the literals of `v`, you can *derive* `φ` if `v` makes it true, or `∼φ` if false. Proved by induction
-on `φ`, with one *derived rule* per connective × sign (e.g. "from `∼a` derive `∼(a ⋏ b)`", "from `b` derive
-`a ⇒ b`") — the lemmas `notAnd_left`, `imp_of_right`, … in the `Kalmar` module. The atom case is just the
-literal sitting in the context.
 
-**Variable elimination.** If `φ` is a tautology, `eval v φ = true` for *every* `v`, so by Kalmár *every*
-literal context proves `φ`. Now collapse them:
-```lean
-elim n φ : (∀ v, litCtx v n ⊢ φ) → ([] ⊢ φ)
+These are assumptions, not unconditional conclusions. Another row can have a different
+literal context without making the system contradictory.
+
+## 3. Construct a derivation under a row's assumptions
+
+The supplied function has this type:
+
+```text
+kalmar v n a bound :
+  (eval v a = true  → (litCtx v n ⊢ a)) ×
+  (eval v a = false → (litCtx v n ⊢ ∼a))
 ```
-`elim` peels atoms off one at a time. To remove atom `n` from `litCtx v (n+1)`: the two valuations agreeing
-with `v` below `n` but sending `n` to `true`/`false` give derivations from `var n :: litCtx v n` and
-`∼(var n) :: litCtx v n`; **`byCasesD`** (proof by cases on `var n ∨ ∼(var n)`, i.e. excluded middle in
-context) combines them into one from `litCtx v n`. Recurse down to `[]`. Excluded middle — derivable here
-because the system is classical (`raa`) — is exactly what powers the case split.
 
-## 4. The assembly
+`bound : a.maxVar ≤ n` guarantees the context covers every atom in a. The result is a pair
+of functions. `.1` takes evidence that the row makes a true and builds a derivation of a;
+`.2` takes evidence that the row makes it false and builds a derivation of its negation.
 
-With those given, completeness is one line: take `n = maxVar φ` (covering all of `φ`'s atoms); for each `v`,
-`kalmar` (fed `h v : eval v φ = true`) proves `φ` from `litCtx v n`; `elim` collapses to `[]`.
+For example, take p ∧ q with the row p false, q true. The context contains ∼p and q. The
+negative branch builds ∼(p ∧ q): assume the conjunction, extract p, and contradict ∼p. In
+another row where both atoms are true, the positive branch uses `andI` to pair the two
+assumption leaves. Both constructions follow the truth table, but actually produce rules.
+
+We can use the positive function for a particular row without assembling completeness:
 
 ```lean
-noncomputable def completeness {φ} (h : Tautology φ) : [] ⊢ φ :=
+def rowConjunction : litCtx (fun _ => true) 2 ⊢
+    (Form.var 0 ⋏ Form.var 1) := by
+  have build := (kalmar (fun _ => true) 2
+    (Form.var 0 ⋏ Form.var 1) (by decide)).1
+  exact build (by rfl)
+```
+
+The bound and the row evaluation are concrete, so they compute. The resulting value is an
+actual tree. For the general construction, `kalmar` recurses on formulas, rebuilding trees
+with the appropriate derived rule for each connective and Boolean case.
+
+## 4. Remove the row assumptions
+
+Suppose a conclusion c has been derived from both p :: Γ and ∼p :: Γ. The supplied `byCasesD`
+combines those trees into a derivation of c from Γ:
+
+```text
+p :: Γ ⊢ c        ∼p :: Γ ⊢ c
+─────────────────────────────
+             Γ ⊢ c
+```
+
+It first constructs excluded middle in our classical system, then uses `orE`. This eliminates
+the case assumption, not a variable occurrence inside the formula c.
+
+`elim n c` repeats this operation for n atom indices. Its input is a function that can build
+a derivation from each row's literal context; its output is a derivation from the empty context:
+
+```text
+elim n c : (∀ v, litCtx v n ⊢ c) → ([] ⊢ c)
+```
+
+For two indices, imagine four row derivations. Combine the two choices for the higher index
+to obtain a derivation for each remaining choice of the lower index. Then combine those two.
+All temporary literal assumptions have been discharged; the resulting tree still records
+the classical case splits used to discharge them.
+
+The recursion decreases n until zero; at zero the literal context is already empty.
+`kalmar` recurses on formula children. Both are ordinary executable definitions in the library.
+They don't need `noncomputable` or an unbounded search.
+
+## 5. A derivation is data; existence is a proposition
+
+The type `[] ⊢ a` lives in `Type` and contains a particular derivation tree.
+`Nonempty ([] ⊢ a)` lives in `Prop` and says such a tree exists. For example:
+
+```lean
+example (a : Form) (d : [] ⊢ a) : Nonempty ([] ⊢ a) := by
+  exact ⟨d⟩
+```
+
+The equivalence with `Tautology a`, another proposition, uses this `Nonempty` wrapper.
+The wrapper isn't required because the construction is noncomputable: ours is executable.
+It is required here to express logical equivalence between two propositions. The final
+solver will keep the actual derivation as data rather than discard it into an existence claim.
+
+## 6. Prove it
+
+Open `Skeleton.lean`. The supporting definitions are supplied; complete these declarations.
+The worked answers are after the hints.
+
+```bash
+make lab C=01-natural-deduction/06-completeness
+```
+
+```lean
+def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ := by
+  sorry
+```
+
+```lean
+theorem provable_iff_tautology {φ : Form} : Nonempty ([] ⊢ φ) ↔ Tautology φ := by
+  sorry
+```
+
+The required status determines whether the lab succeeds. Optional placeholders are reported
+separately in yellow when terminal colors are available; required success is green.
+
+## 7. Hints
+
+**`completeness`.** Use the exclusive variable bound of the input formula. For each valuation, select the positive function from `kalmar` and supply the validity hypothesis. Feed that family of derivations to `elim`.
+
+**`provable_iff_tautology`.** Construct both directions. Extract a derivation from `Nonempty` in the forward direction; build one with your completeness function in the reverse direction, then wrap it.
+
+## 8. Worked corrections to the required exercises
+
+Try the exercises first. These proofs match `Solution.lean`, checked by `make test`.
+
+### `completeness`
+
+```lean
+def completeness {φ : Form} (h : Tautology φ) : [] ⊢ φ :=
   elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))
 ```
 
-(It's `noncomputable` only because it's built via the recursor — we use it as an *existence* result, not
-to run.) The equivalence then pairs it with soundness:
+`h v` proves truth under the chosen valuation. The positive component of `kalmar` converts that evidence into a derivation from its literal context. `elim` then discharges the literal assumptions across all rows. The definition returns data and is executable.
+
+### `provable_iff_tautology`
 
 ```lean
-theorem provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ :=
+theorem provable_iff_tautology {φ : Form} : Nonempty ([] ⊢ φ) ↔ Tautology φ :=
   ⟨fun ⟨d⟩ => tautology_of_proof d, fun h => ⟨completeness h⟩⟩
 ```
 
-And now completeness delivers what the prover couldn't:
+The forward implication uses semantic soundness on the extracted tree. The reverse implication uses the new construction, then packages its result as an existence statement.
+
+## 9. Optional practice
+
+Use `optional/Skeleton.lean`; the same lab command checks it separately. These exercises have
+their own verified answer key in `optional/Solution.lean`.
 
 ```lean
-example : Nonempty ([] ⊢ ((var 0 ⋏ var 1) ⇒ var 0)) :=
-  ⟨completeness (by intro v; simp only [eval]; cases v 0 <;> cases v 1 <;> rfl)⟩
+def derive_right_projection : [] ⊢ ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 1) := by
+  sorry
 ```
 
-The slice-1.5 search returned `none` for this; completeness builds the derivation. (We wrap it in
-`Nonempty` because `completeness` is `noncomputable` — an existence witness, not something we run.)
+*Hint:* Supply a validity proof to completeness; split on the two relevant atom values.
 
-## 5. Prove it
-
-The machinery is imported. Assemble the two results (`make lab C=01-natural-deduction/06-completeness`):
-
-1. `completeness {φ} (h : Tautology φ) : [] ⊢ φ`
-2. `provable_iff_tautology {φ} : Nonempty ([] ⊢ φ) ↔ Tautology φ`
-
-§4 is the walkthrough. Try cold; §6 has hints.
-
-## 6. Hints for the skeleton
-
-**1 `completeness`.** *Nudge:* feed `elim` (at `n = φ.maxVar`) a function that, for each `v`, returns a
-proof of `φ` from `litCtx v n`. The `.1` projection of `kalmar` needs `eval v φ = true` — and `h v` is
-exactly that (`Tautology` is `∀ v, eval v φ = true`). *More:*
-`elim φ.maxVar φ (fun v => (kalmar v φ.maxVar φ (Nat.le_refl _)).1 (h v))`. (Use `Nat.le_refl _`, not
-`le_refl` — the latter is Mathlib-only.)
-
-**2 `provable_iff_tautology`.** *Nudge:* `constructor` (or an anonymous `⟨_, _⟩`). Forward: destructure the
-`Nonempty` to a derivation and apply `tautology_of_proof`. Backward: apply `completeness` and wrap in
-`Nonempty.intro`. *More:* `⟨fun ⟨d⟩ => tautology_of_proof d, fun h => ⟨completeness h⟩⟩`.
-
-## 7. Exercises (optional, for fluency)
-
-1. **Get a proof from a truth table.** Prove `[] ⊢ (var 0 ⇒ (var 1 ⇒ var 0))` by `completeness`, supplying
-   a proof that the formula is a tautology. *Hint:* `completeness (by intro v; simp only [eval]; cases v 0
-   <;> cases v 1 <;> rfl)`.
-2. **Conceptual.** Using `provable_iff_tautology`, explain in a sentence why a *complete* prover is possible
-   in principle (unlike the slice-1.5 one), and what it would return for an invalid formula.
-
-## 8. Corrections to the optional exercises
-
-### Exercise 1 — a proof, conjured from validity
 
 ```lean
-example : Nonempty ([] ⊢ (Form.var 0 ⇒ (Form.var 1 ⇒ Form.var 0))) :=
-  ⟨completeness (by intro v; simp only [eval]; cases v 0 <;> cases v 1 <;> rfl)⟩
+theorem no_derivation_from_counterexample (a : Form) (v : Nat → Bool)
+    (h : eval v a = false) : ¬Nonempty ([] ⊢ a) := by
+  sorry
 ```
 
-We never wrote a derivation tree — we proved the formula is *valid* (the truth table is all `true`, checked
-by the four-way `cases`), and `completeness` produced a derivation from that. Validity in, proof out. This
-is `K` (slice 1.3's `dK`), now obtained semantically.
+*Hint:* Assume a derivation exists and specialize soundness to the falsifying valuation.
 
-### Exercise 2 — why a complete prover exists
 
-`provable_iff_tautology` says `Nonempty ([] ⊢ φ) ↔ Tautology φ`. Since `Tautology φ` is *decidable* (run
-the truth table, e.g. `taut?`), provability is decidable too: a complete prover can decide validity and,
-on a *yes*, hand back the derivation `completeness` constructs; on a *no*, the formula is genuinely invalid
-(it has a falsifying valuation), so no derivation exists — and reporting "unprovable" is now correct, not a
-mere search failure. The slice-1.5 prover lacked this guarantee; completeness supplies it.
+Read each statement as an input/output contract. Identify what evidence is already available
+and what result must be built. You may reuse the proved library results from this lesson.
 
-## 9. Going further — Course 1 is complete
+## 10. Worked corrections to the optional exercises
 
-You've built a verified theorem prover for natural deduction: a syntax (`Form`), a semantics (`⊨`), a
-proof system (`⊢`), a search (`prove`), and **both** metatheorems — soundness and completeness — closing
-`⊢ ⟺ ⊨`. That's the whole arc of Course 1.
+### `derive_right_projection`
 
-- **FOL stretch (1.7).** The data structures were kept first-order-ready (`var : Nat`). Lifting `Form` to
-  terms + quantifiers and re-running soundness is tractable; *completeness* for FOL is a serious
-  undertaking (Henkin construction) — see `references` (FFL-Foundation) for a full Lean account.
-- **Next: Course 2 — a resolution prover.** Prover #2, refutation-based, the bridge to SAT. It reuses this
-  course's `Logic` (syntax + semantics) and proves its own soundness and refutation-completeness.
+```lean
+def derive_right_projection : [] ⊢ ((Form.var 0 ⋏ Form.var 1) ⇒ Form.var 1) := by
+  apply completeness
+  intro v
+  simp only [eval]
+  cases v 0 <;> cases v 1 <;> rfl
+```
+
+`apply completeness` changes the data-construction goal into a semantic validity goal. Introduce a valuation, unfold evaluation, and check the four possible values of atoms 0 and 1. The construction then turns this validity proof into an actual derivation.
+
+
+### `no_derivation_from_counterexample`
+
+```lean
+theorem no_derivation_from_counterexample (a : Form) (v : Nat → Bool)
+    (h : eval v a = false) : ¬Nonempty ([] ⊢ a) := by
+  intro ⟨d⟩
+  have ht := tautology_of_proof d v
+  rw [h] at ht
+  contradiction
+```
+
+Unpack a hypothetical derivation from its `Nonempty` wrapper. Soundness says its formula is true under the given valuation v, but h says it is false there. Rewriting produces an impossible Boolean equality. This proof refutes derivations of any formula for which a counterexample has been supplied.
+
+
+## 11. Conclusion
+
+Kalmár builds derivations under row assumptions, and variable elimination combines those
+cases into an empty-context derivation. Soundness and completeness now relate existence of a
+derivation to semantic validity. The construction is executable, but it still needs a validity
+input. Next the certified finite table will supply that input automatically.
+
+## 12. Going further
+
+- **Logic and Proof** — `../../../references/logic_and_proof`, if available: compare the
+  propositional syntax, semantics, and natural-deduction chapters with these definitions.
+- **Theorem Proving in Lean 4** — `../../../references/theorem_proving_in_lean4`, if available:
+  review inductive types, dependent functions, and recursion as needed.
+- **Next:** 1.7 — A complete, terminating propositional solver.
